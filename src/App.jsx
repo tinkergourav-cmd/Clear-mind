@@ -954,7 +954,7 @@ export default function WorkflowApp() {
           const defId = localStorage.getItem('nexus-default-project');
           if (defId) saveDefaultProject(defId).catch(() => {});
         }
-      }, 500);
+      }, 100);
       localStorage.setItem('nexus-active-project', activeProjectId);
     }
   }, [workspaces, activeTab, nextId, reminders, tasks, taskGroups, initialized, activeProjectId]);
@@ -980,7 +980,7 @@ export default function WorkflowApp() {
             .then((success) => setSyncStatus(success ? 'synced' : 'error'))
             .catch(() => setSyncStatus('error'));
         }
-      }, 500);
+      }, 100);
     }
   }, [storedPassword, initialized, activeProjectId]);
 
