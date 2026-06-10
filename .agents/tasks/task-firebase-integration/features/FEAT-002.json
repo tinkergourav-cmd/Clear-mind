@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Address review feedback: add sync indicator tooltips with retry, offline-edit preservation via timestamp comparison, and write-race guard",
+  "status": "completed",
+  "steps": [
+    "Step 1: Add write-race guard to firebaseService.js using a module-level isSaving flag that queues the latest save and discards intermediate ones",
+    "Step 2: Add meaningful tooltips to the sync status indicator in App.jsx and add a click handler on the error state that retries the sync",
+    "Step 3: Add timestamp comparison in the initialization logic so localStorage data is preserved if it is newer than Firestore data"
+  ],
+  "acceptance_criteria": [
+    "firebaseService.js has a write-race guard that prevents concurrent in-flight saves",
+    "The sync status indicator shows descriptive tooltips explaining each state",
+    "Clicking the error state icon retries the sync",
+    "On initialization, if localStorage has a newer lastModified timestamp than Firestore, localStorage data is used instead of Firestore data and synced up",
+    "npm run build completes without errors"
+  ],
+  "verification": [
+    "Run 'cd /projects/sandbox/Clear-mind && npm run build' and confirm it succeeds with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "All three review issues addressed. Build passes with pre-existing chunk size warning (622KB)."
+}

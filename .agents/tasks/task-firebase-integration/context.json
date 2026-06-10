@@ -1,0 +1,21 @@
+{
+  "project_type": "React + Vite single-page application (visual workspace/mind-mapping tool)",
+  "language": "JavaScript/JSX",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "None (no test files exist)",
+  "build_command": "npm run build",
+  "test_command": "npm run build (no test suite - use build as validation)",
+  "verification_instructions": "1. Run npm install to ensure deps resolve. 2. Run npm run build to verify no compilation errors. 3. Optionally run npm run dev to check the app loads.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "OPEN_INTERNET - full network access, can install packages freely",
+  "contribution_requirements": "No CONTRIBUTING.md found. Follow existing code patterns.",
+  "key_patterns": "All localStorage operations are in App.jsx. Data is stored under keys: 'nexus-app-state' (array of project objects), 'nexus-active-project' (string ID), 'nexus-default-project' (string ID). Auto-save uses a 500ms debounce timer (saveTimerRef) in a useEffect that watches [workspaces, activeTab, nextId, reminders, tasks, taskGroups, initialized, activeProjectId]. Each project object contains: id, name, password, description, thumbnail, lastModified, workspaces (array of {id, name, groups, nodes, edges, images, pins}), activeTab, nextId, reminders, tasks, taskGroups. The switchProject and cycleToProject functions handle loading different projects.",
+  "relevant_files": [
+    "src/App.jsx (main component, 5982 lines, all persistence logic)",
+    "src/main.jsx (React entry point)",
+    "package.json (dependencies)",
+    "vite.config.js (build config)"
+  ],
+  "directory_structure": "Flat src/ directory with App.jsx (main), CardEditorPanel.jsx, FullTaskManager.jsx, MiniMap.jsx, PinPanel.jsx, ReminderPanel.jsx, MarkdownRenderer.jsx, taskConstants.js, index.css, main.jsx. Public assets in public/. Config files at root."
+}
