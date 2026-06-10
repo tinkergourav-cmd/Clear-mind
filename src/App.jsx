@@ -7,7 +7,7 @@ import {
   Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
   Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
-  MapPin, Bell, Pencil, MousePointer, ListTodo
+  MapPin, Bell, Pencil, MousePointer, ListTodo, Cloud, CloudOff, Loader
 } from 'lucide-react';
 import MiniMap from './MiniMap';
 import PinPanel, { PIN_ICONS } from './PinPanel';
@@ -16,6 +16,8 @@ import FullTaskManager from './FullTaskManager';
 import { GROUP_COLORS } from './taskConstants';
 import MarkdownRenderer from './MarkdownRenderer';
 import CardEditorPanel from './CardEditorPanel';
+import { saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject } from './firebaseService';
+import { isFirebaseConfigured } from './firebase';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -344,6 +346,7 @@ export default function WorkflowApp() {
   const [activeTab, setActiveTab] = useState('');
   const [nextId, setNextId] = useState(10);
   const [initialized, setInitialized] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('offline'); // 'synced', 'syncing', 'error', 'offline'
   const workspaceRef = useRef(null);
 
   // --- UI Layout Panels ---
@@ -628,9 +631,34 @@ export default function WorkflowApp() {
   useEffect(() => {
     const init = async () => {
       try {
-        // Check for new project system first
-        const savedAppState = localStorage.getItem('nexus-app-state');
-        const savedActiveProject = localStorage.getItem('nexus-active-project');
+        // Try loading from Firestore first (primary data source)
+        let firestoreProjects = null;
+        let firestoreActiveId = null;
+        let firestoreDefaultId = null;
+        if (isFirebaseConfigured()) {
+          setSyncStatus('syncing');
+          try {
+            firestoreProjects = await loadProjects();
+            firestoreActiveId = await loadActiveProject();
+            firestoreDefaultId = await loadDefaultProject();
+            if (firestoreProjects) {
+              // Also update localStorage as backup
+              localStorage.setItem('nexus-app-state', JSON.stringify(firestoreProjects));
+              if (firestoreActiveId) localStorage.setItem('nexus-active-project', firestoreActiveId);
+              if (firestoreDefaultId) localStorage.setItem('nexus-default-project', firestoreDefaultId);
+              setSyncStatus('synced');
+            } else {
+              setSyncStatus('synced');
+            }
+          } catch (e) {
+            console.warn('[Firebase] Could not load from Firestore, falling back to localStorage:', e);
+            setSyncStatus('error');
+          }
+        }
+
+        // Use Firestore data if available, otherwise fall back to localStorage
+        const savedAppState = firestoreProjects ? JSON.stringify(firestoreProjects) : localStorage.getItem('nexus-app-state');
+        const savedActiveProject = firestoreActiveId || localStorage.getItem('nexus-active-project');
 
         if (savedAppState) {
           // Load from new project system
@@ -887,6 +915,16 @@ export default function WorkflowApp() {
       saveTimerRef.current = setTimeout(() => {
         const currentProjects = projectsRef.current;
         localStorage.setItem('nexus-app-state', JSON.stringify(currentProjects));
+        // Also save to Firestore (fire-and-forget)
+        if (isFirebaseConfigured()) {
+          setSyncStatus('syncing');
+          saveProjects(currentProjects)
+            .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+            .catch(() => setSyncStatus('error'));
+          saveActiveProject(activeProjectId).catch(() => {});
+          const defId = localStorage.getItem('nexus-default-project');
+          if (defId) saveDefaultProject(defId).catch(() => {});
+        }
       }, 500);
       localStorage.setItem('nexus-active-project', activeProjectId);
     }
@@ -906,6 +944,13 @@ export default function WorkflowApp() {
       saveTimerRef.current = setTimeout(() => {
         const currentProjects = projectsRef.current;
         localStorage.setItem('nexus-app-state', JSON.stringify(currentProjects));
+        // Also save to Firestore (fire-and-forget)
+        if (isFirebaseConfigured()) {
+          setSyncStatus('syncing');
+          saveProjects(currentProjects)
+            .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+            .catch(() => setSyncStatus('error'));
+        }
       }, 500);
     }
   }, [storedPassword, initialized, activeProjectId]);
@@ -1804,6 +1849,13 @@ export default function WorkflowApp() {
         : p
       );
       localStorage.setItem('nexus-app-state', JSON.stringify(updated));
+      // Also save to Firestore (fire-and-forget)
+      if (isFirebaseConfigured()) {
+        setSyncStatus('syncing');
+        saveProjects(updated)
+          .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+          .catch(() => setSyncStatus('error'));
+      }
       return updated;
     });
     // Load target project
@@ -1828,6 +1880,8 @@ export default function WorkflowApp() {
     setPasswordEnabled(!!target.password);
     setIsAuthenticated(true);
     localStorage.setItem('nexus-active-project', targetId);
+    // Save active project to Firestore
+    if (isFirebaseConfigured()) saveActiveProject(targetId).catch(() => {});
     setShowProjectPanel(false);
     setProjectPasswordInput('');
     setProjectError('');
@@ -1851,6 +1905,13 @@ export default function WorkflowApp() {
         : p
       );
       localStorage.setItem('nexus-app-state', JSON.stringify(updated));
+      // Also save to Firestore (fire-and-forget)
+      if (isFirebaseConfigured()) {
+        setSyncStatus('syncing');
+        saveProjects(updated)
+          .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+          .catch(() => setSyncStatus('error'));
+      }
       return updated;
     });
     // Load target project
@@ -1876,6 +1937,8 @@ export default function WorkflowApp() {
     }
     setIsAuthenticated(true);
     localStorage.setItem('nexus-active-project', targetId);
+    // Save active project to Firestore
+    if (isFirebaseConfigured()) saveActiveProject(targetId).catch(() => {});
     setShowProjectPanel(false);
     setProjectPasswordInput('');
     setProjectError('');
@@ -4247,6 +4310,21 @@ export default function WorkflowApp() {
 
 
         <div className="relative flex items-center gap-0.5 sm:gap-1 shrink-0">
+          {/* Firebase Sync Status Indicator */}
+          <div className="p-1.5 rounded-lg shrink-0" title={
+            syncStatus === 'synced' ? 'Synced to cloud' :
+            syncStatus === 'syncing' ? 'Syncing...' :
+            syncStatus === 'error' ? 'Sync error' :
+            'Cloud sync offline'
+          }>
+            {syncStatus === 'synced' && <Cloud className="w-4 h-4 text-green-500" />}
+            {syncStatus === 'syncing' && <Loader className="w-4 h-4 text-blue-500 animate-spin" />}
+            {syncStatus === 'error' && <CloudOff className="w-4 h-4 text-red-400" />}
+            {syncStatus === 'offline' && <CloudOff className="w-4 h-4 text-slate-300" />}
+          </div>
+
+          <div className="w-px h-5 sm:h-6 bg-slate-200 mx-0.5 sm:mx-1"></div>
+
           {/* Always-visible Undo/Redo buttons */}
           <button onClick={performUndo} disabled={!canUndo} className={`p-1.5 rounded-lg transition-colors ${!canUndo ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`} title="Undo">
             <Undo2 className="w-4 h-4" />

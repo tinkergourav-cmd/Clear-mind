@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Install Firebase, create configuration and Firestore service module, and integrate into App.jsx so data is saved/loaded from Firestore alongside localStorage (dual persistence with Firestore as primary)",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Install the firebase npm package by running: npm install firebase",
+    "Step 2: Create src/firebase.js with Firebase app initialization using placeholder config values (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId) that the user will fill in. Export the initialized Firestore instance (getFirestore).",
+    "Step 3: Create src/firebaseService.js that exports helper functions for Firestore CRUD operations: (a) saveProjects(projects) - saves the full projects array to a Firestore document at collection 'users' / document 'default' (using setDoc with merge), (b) loadProjects() - reads the projects array from Firestore, (c) saveActiveProject(projectId) - saves the active project ID, (d) loadActiveProject() - reads the active project ID, (e) saveDefaultProject(projectId) - saves the default project ID, (f) loadDefaultProject() - reads the default project ID. Use a simple document structure: collection 'appData', doc 'main' with fields: projects (stored as JSON string since Firestore has document size limits), activeProjectId, defaultProjectId.",
+    "Step 4: Modify the initialization useEffect in src/App.jsx (around line 628) to first attempt loading from Firestore using loadProjects(). If Firestore returns data, use it (and also store in localStorage as backup). If Firestore fails (e.g. no config yet, offline), fall back to localStorage as currently implemented. Import the firebaseService functions at the top of App.jsx.",
+    "Step 5: Modify the debounced auto-save useEffect in src/App.jsx (around line 878) to also call saveProjects() to Firestore after the localStorage write. The Firestore save should be fire-and-forget (don't block the UI). Also save activeProjectId and defaultProjectId to Firestore.",
+    "Step 6: Modify the switchProject function (around line 1800) and cycleToProject function to also persist to Firestore when they write to localStorage.",
+    "Step 7: Add a small sync status indicator component in the App. Add a state variable like [syncStatus, setSyncStatus] with values 'synced', 'syncing', 'error', 'offline'. Show a small icon in the top-right corner (cloud icon from lucide-react) that indicates: green/checkmark when synced, spinning/loading when syncing, red/warning when error. This gives the user visual feedback that Firebase is working.",
+    "Step 8: Add error handling in the Firebase service so that if Firebase is not configured (placeholder values), the service functions gracefully return null/do nothing and log a console message telling the user to configure Firebase. This ensures the app works fine without Firebase config.",
+    "Step 9: Verify the build succeeds with npm run build"
+  ],
+  "acceptance_criteria": [
+    "npm install completes without errors",
+    "npm run build completes without errors",
+    "src/firebase.js exists with placeholder configuration and clear comments for the user",
+    "src/firebaseService.js exists with save/load functions for Firestore",
+    "App.jsx imports and uses the Firebase service for both loading (init) and saving (auto-save)",
+    "A visual sync indicator is shown in the UI",
+    "When Firebase config is not set (placeholders), the app still works using localStorage as fallback with no errors thrown"
+  ],
+  "verification": [
+    "Run 'cd /projects/sandbox/Clear-mind && npm install' and confirm it succeeds",
+    "Run 'cd /projects/sandbox/Clear-mind && npm run build' and confirm it succeeds with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
