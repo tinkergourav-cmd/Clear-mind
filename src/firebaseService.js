@@ -12,12 +12,48 @@ import { db, isFirebaseConfigured } from './firebase';
 const COLLECTION = 'appData';
 const DOC_ID = 'main';
 
+// --- Write-race guard ---
+// Prevents concurrent in-flight saves from resolving out of order.
+// If a save is already in progress, we queue only the latest request
+// and discard any intermediate ones (only the most recent data matters).
+let isSaving = false;
+let queuedSave = null; // stores { fn, args } for the next pending save
+
 /**
  * Get a reference to the main data document
  */
 function getDocRef() {
   if (!db) return null;
   return doc(db, COLLECTION, DOC_ID);
+}
+
+/**
+ * Execute a save operation with write-race protection.
+ * If a save is already in-flight, queues only the latest call (discards intermediate ones).
+ * @param {Function} saveFn - The async function to execute
+ * @returns {Promise<boolean>} true if saved successfully
+ */
+async function guardedSave(saveFn) {
+  if (isSaving) {
+    // A save is already in progress - queue this one (replaces any previously queued)
+    queuedSave = saveFn;
+    return true; // Optimistically return true; the queued save will run shortly
+  }
+
+  isSaving = true;
+  try {
+    const result = await saveFn();
+    return result;
+  } finally {
+    isSaving = false;
+    // If a save was queued while we were busy, run it now
+    if (queuedSave) {
+      const nextSave = queuedSave;
+      queuedSave = null;
+      // Run the queued save (don't await here to avoid blocking the caller)
+      guardedSave(nextSave).catch(() => {});
+    }
+  }
 }
 
 /**
@@ -31,14 +67,16 @@ export async function saveProjects(projects) {
     console.info('[Firebase] Not configured - skipping save. Set up your Firebase config in src/firebase.js');
     return false;
   }
-  try {
-    const docRef = getDocRef();
-    await setDoc(docRef, { projects: JSON.stringify(projects) }, { merge: true });
-    return true;
-  } catch (error) {
-    console.warn('[Firebase] Error saving projects:', error.message);
-    return false;
-  }
+  return guardedSave(async () => {
+    try {
+      const docRef = getDocRef();
+      await setDoc(docRef, { projects: JSON.stringify(projects) }, { merge: true });
+      return true;
+    } catch (error) {
+      console.warn('[Firebase] Error saving projects:', error.message);
+      return false;
+    }
+  });
 }
 
 /**

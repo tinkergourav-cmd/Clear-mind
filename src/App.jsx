@@ -642,10 +642,39 @@ export default function WorkflowApp() {
             firestoreActiveId = await loadActiveProject();
             firestoreDefaultId = await loadDefaultProject();
             if (firestoreProjects) {
-              // Also update localStorage as backup
-              localStorage.setItem('nexus-app-state', JSON.stringify(firestoreProjects));
-              if (firestoreActiveId) localStorage.setItem('nexus-active-project', firestoreActiveId);
-              if (firestoreDefaultId) localStorage.setItem('nexus-default-project', firestoreDefaultId);
+              // --- Timestamp comparison: preserve newer local edits ---
+              // Compare the most recent lastModified from Firestore with localStorage
+              // to avoid losing offline edits when reconnecting.
+              const localRaw = localStorage.getItem('nexus-app-state');
+              let useLocal = false;
+              if (localRaw) {
+                try {
+                  const localProjects = JSON.parse(localRaw);
+                  if (Array.isArray(localProjects) && localProjects.length > 0) {
+                    const getNewestTimestamp = (arr) => arr.reduce((max, p) => Math.max(max, p.lastModified || 0), 0);
+                    const localNewest = getNewestTimestamp(localProjects);
+                    const firestoreNewest = getNewestTimestamp(firestoreProjects);
+                    if (localNewest > firestoreNewest) {
+                      // localStorage has newer data (offline edits) - use it instead
+                      console.info('[Firebase] Local data is newer than cloud data. Keeping local edits and syncing up.');
+                      useLocal = true;
+                      firestoreProjects = null; // Clear so we fall through to localStorage
+                      firestoreActiveId = null;
+                      firestoreDefaultId = null;
+                      // Sync the newer local data up to Firestore
+                      saveProjects(localProjects).catch(() => {});
+                    }
+                  }
+                } catch (parseErr) {
+                  // If localStorage is corrupted, just use Firestore data
+                }
+              }
+              if (!useLocal) {
+                // Firestore is newer or same - update localStorage as backup
+                localStorage.setItem('nexus-app-state', JSON.stringify(firestoreProjects));
+                if (firestoreActiveId) localStorage.setItem('nexus-active-project', firestoreActiveId);
+                if (firestoreDefaultId) localStorage.setItem('nexus-default-project', firestoreDefaultId);
+              }
               setSyncStatus('synced');
             } else {
               setSyncStatus('synced');
@@ -4311,12 +4340,27 @@ export default function WorkflowApp() {
 
         <div className="relative flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* Firebase Sync Status Indicator */}
-          <div className="p-1.5 rounded-lg shrink-0" title={
-            syncStatus === 'synced' ? 'Synced to cloud' :
-            syncStatus === 'syncing' ? 'Syncing...' :
-            syncStatus === 'error' ? 'Sync error' :
-            'Cloud sync offline'
-          }>
+          <div
+            className={`p-1.5 rounded-lg shrink-0 ${syncStatus === 'error' ? 'cursor-pointer hover:bg-red-50' : ''}`}
+            title={
+              syncStatus === 'synced' ? 'All changes saved to cloud - your data is backed up' :
+              syncStatus === 'syncing' ? 'Saving your changes to the cloud...' :
+              syncStatus === 'error' ? 'Could not save to cloud - click here to try again' :
+              'Cloud sync is not active - your data is saved locally on this device'
+            }
+            onClick={() => {
+              if (syncStatus === 'error' && isFirebaseConfigured()) {
+                const currentProjects = projectsRef.current;
+                setSyncStatus('syncing');
+                saveProjects(currentProjects)
+                  .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+                  .catch(() => setSyncStatus('error'));
+                saveActiveProject(activeProjectId).catch(() => {});
+                const defId = localStorage.getItem('nexus-default-project');
+                if (defId) saveDefaultProject(defId).catch(() => {});
+              }
+            }}
+          >
             {syncStatus === 'synced' && <Cloud className="w-4 h-4 text-green-500" />}
             {syncStatus === 'syncing' && <Loader className="w-4 h-4 text-blue-500 animate-spin" />}
             {syncStatus === 'error' && <CloudOff className="w-4 h-4 text-red-400" />}
