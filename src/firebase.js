@@ -14,12 +14,13 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID_HERE",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID_HERE",
-  appId: "YOUR_APP_ID_HERE"
+  apiKey: "AIzaSyBlMMgjw31XpBYbEZcq-mNRC75tHtybYW8",
+  authDomain: "clear-mind-7d853.firebaseapp.com",
+  projectId: "clear-mind-7d853",
+  storageBucket: "clear-mind-7d853.firebasestorage.app",
+  messagingSenderId: "311536235445",
+  appId: "1:311536235445:web:9f0ed081d86ef4dd185ffc",
+  measurementId: "G-EDGW6BGEXD"
 };
 
 // Check if Firebase is configured (not using placeholder values)
