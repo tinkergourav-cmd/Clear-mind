@@ -1,0 +1,11 @@
+{
+  "project_type": "React + Vite single-page application",
+  "language": "JavaScript/JSX",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "None",
+  "build_command": "npm run build",
+  "test_command": "npm run build",
+  "verification_instructions": "Run npm run build to verify no compilation errors.",
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "OPEN_INTERNET"
+}
