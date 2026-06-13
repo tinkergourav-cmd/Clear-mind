@@ -1435,7 +1435,23 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleEscapeKey);
   }, [selectedNodeIds]);
 
-  // --- Mini Map (no keyboard shortcut, use toolbar button) ---
+  // --- W key toggles mini map ---
+  useEffect(() => {
+    const handleMiniMapKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        setShowMiniMap(prev => {
+          const next = !prev;
+          setMiniMapOpenedViaShortcut(next);
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleMiniMapKey);
+    return () => window.removeEventListener('keydown', handleMiniMapKey);
+  }, []);
 
   // --- P key toggles pin visibility, PP (double-press) toggles pin panel, Shift+P drops pin at viewport center ---
   useEffect(() => {
@@ -5299,7 +5315,7 @@ export default function WorkflowApp() {
               <button onClick={() => setTransform({x:0, y:0, scale:1})} className="p-1.5 sm:p-2 hover:bg-slate-100 text-slate-600 rounded-md transition-colors" title="Reset View"><Focus className="w-4 h-4 sm:w-5 sm:h-5"/></button>
               <button onClick={() => handleZoom(-0.25)} className="p-1.5 sm:p-2 hover:bg-slate-100 text-slate-600 rounded-md transition-colors" title="Zoom Out"><ZoomOut className="w-4 h-4 sm:w-5 sm:h-5"/></button>
               <div className="h-px w-5 bg-slate-200 my-0.5" />
-              <button onClick={() => { setShowMiniMap(prev => !prev); setMiniMapOpenedViaShortcut(false); }} className={`p-1.5 sm:p-2 hover:bg-slate-100 rounded-md transition-colors ${showMiniMap ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600'}`} title="Toggle Mini Map"><Map className="w-4 h-4 sm:w-5 sm:h-5"/></button>
+              <button onClick={() => { setShowMiniMap(prev => !prev); setMiniMapOpenedViaShortcut(false); }} className={`p-1.5 sm:p-2 hover:bg-slate-100 rounded-md transition-colors ${showMiniMap ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600'}`} title="Toggle Mini Map (W)"><Map className="w-4 h-4 sm:w-5 sm:h-5"/></button>
             </div>
           </div>
 
