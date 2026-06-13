@@ -1,0 +1,7 @@
+{
+  "task_id": "task-redesign-selection-toolbar",
+  "task_description": "Redesign the Multi-Select Floating Action Bar in App.jsx to be a compact selection box (pill) at 50% opacity that expands into an action menu on click. Reduces visual clutter while preserving all existing functionality (Delete, Duplicate, Export, Link, Group actions).",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}
