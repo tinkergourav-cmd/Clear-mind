@@ -128,6 +128,15 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
               )}
             </div>
           )}
+          {selectedNode && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="p-1.5 rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-100 transition-colors text-slate-500 hover:text-slate-700"
+              title={showPreview ? 'Hide Preview' : 'Show Preview'}
+            >
+              {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
@@ -172,17 +181,7 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
             />
           </div>
 
-          {/* Preview Toggle */}
-          <div className="shrink-0">
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-100 transition-colors text-slate-600"
-              title={showPreview ? 'Hide Preview' : 'Show Preview'}
-            >
-              {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
-            </button>
-          </div>
+
 
           {/* Markdown Preview */}
           {showPreview && content && (
