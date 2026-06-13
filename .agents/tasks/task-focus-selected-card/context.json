@@ -1,0 +1,18 @@
+{
+  "project_type": "React + Vite SPA (mind-mapping tool called ThoughtFlow/Clear Mind)",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "None configured",
+  "build_command": "npm run build",
+  "test_command": "No test command configured (no test framework)",
+  "verification_instructions": "Run npm run build to confirm the project compiles without errors",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "npm install in /projects/sandbox/Clear-mind",
+  "environment_constraints": "No test framework. Verification limited to build success.",
+  "contribution_requirements": "No CONTRIBUTING.md found. Follow existing code patterns.",
+  "key_patterns": "Keyboard shortcuts are individual useEffect hooks that add/remove keydown listeners. Each shortcut follows the pattern: check if target is INPUT/TEXTAREA/SELECT/contentEditable, check for modifier keys, then handle the key. Toast notifications use showToast(msg) which sets toastMessage state (auto-clears after 2000ms). Canvas transform uses {x, y, scale} state applied via CSS translate+scale on a container div. selectedNodeIds is an array of selected card IDs. The nodes array contains objects with {id, x, y, title, content, theme, groupId}. The Focus icon from lucide-react is already imported and used for a 'Reset View' button that sets transform to {x:0, y:0, scale:1}.",
+  "relevant_files": [
+    "src/App.jsx"
+  ],
+  "directory_structure": "Single-page app with all core logic in src/App.jsx. Supporting components: MiniMap.jsx, CardEditorPanel.jsx, PinPanel.jsx, ReminderPanel.jsx, FullTaskManager.jsx. State is managed with useState/useRef hooks in App.jsx."
+}

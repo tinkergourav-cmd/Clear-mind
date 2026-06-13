@@ -396,6 +396,7 @@ export default function WorkflowApp() {
 
   // --- Pan & Zoom States ---
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
@@ -1452,6 +1453,42 @@ export default function WorkflowApp() {
     window.addEventListener('keydown', handleMiniMapKey);
     return () => window.removeEventListener('keydown', handleMiniMapKey);
   }, []);
+
+  // --- F key focuses (centers + resets zoom) the selected card ---
+  useEffect(() => {
+    const handleFocusKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (selectedNodeIds.length === 0) {
+          showToast('No card selected.');
+          return;
+        }
+        if (selectedNodeIds.length > 1) {
+          showToast('Select a single card to focus.');
+          return;
+        }
+        const node = nodes.find(n => n.id === selectedNodeIds[0]);
+        if (!node) return;
+        if (!workspaceRef.current) return;
+        const { width, height } = getNodeDimensions(node);
+        const cardCenterX = node.x + width / 2;
+        const cardCenterY = node.y + height / 2;
+        const rect = workspaceRef.current.getBoundingClientRect();
+        const newTransform = {
+          x: rect.width / 2 - cardCenterX,
+          y: rect.height / 2 - cardCenterY,
+          scale: 1.0
+        };
+        setIsAnimatingTransform(true);
+        setTransform(newTransform);
+        setTimeout(() => setIsAnimatingTransform(false), 300);
+      }
+    };
+    window.addEventListener('keydown', handleFocusKey);
+    return () => window.removeEventListener('keydown', handleFocusKey);
+  }, [selectedNodeIds, nodes, showToast, getNodeDimensions]);
 
   // --- P key toggles pin visibility, PP (double-press) toggles pin panel, Shift+P drops pin at viewport center ---
   useEffect(() => {
@@ -4633,13 +4670,14 @@ export default function WorkflowApp() {
           <div className="absolute inset-0 canvas-grid-clickable cursor-crosshair active:cursor-grabbing opacity-60" style={{
             backgroundImage: 'radial-gradient(#4a5568 1.5px, transparent 1.5px)',
             backgroundSize: `${24 * transform.scale}px ${24 * transform.scale}px`,
-            backgroundPosition: `${transform.x}px ${transform.y}px`
+            backgroundPosition: `${transform.x}px ${transform.y}px`,
+            transition: isAnimatingTransform ? 'background-size 250ms ease-out, background-position 250ms ease-out' : 'none'
           }} />
 
           {/* Canvas View Transform Layer */}
           <div 
             className="absolute top-0 left-0 w-full h-full pointer-events-none"
-            style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0' }}
+            style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', transition: isAnimatingTransform ? 'transform 250ms ease-out' : 'none' }}
           >
             
             {/* --- Render Phase Groups and Nested Subgroups --- */}

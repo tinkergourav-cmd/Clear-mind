@@ -1,0 +1,26 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Add 'F' keyboard shortcut to focus (center + zoom reset) the selected card on the canvas, with smooth animation and validation messages.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Add a new state variable for controlling CSS transition on the canvas transform layer. Something like `const [isAnimatingTransform, setIsAnimatingTransform] = useState(false)` to temporarily enable a CSS transition (200-300ms) on the canvas transform div. Apply `transition: transform 250ms ease-out` conditionally to the canvas transform layer div (around line 4641) when isAnimatingTransform is true.",
+    "Step 2: Add a new useEffect keyboard handler for the 'F' key (following the same pattern as the W key handler around line 1438). The handler should: (a) skip if target is INPUT/TEXTAREA/SELECT/contentEditable, (b) skip if any modifier key is held, (c) check selectedNodeIds.length: if 0 -> showToast('No card selected.'), if > 1 -> showToast('Select a single card to focus.'), if exactly 1 -> perform the focus action.",
+    "Step 3: Implement the focus action: Find the selected node from nodes array using selectedNodeIds[0]. Get the node dimensions using the existing getNodeDimensions(node) helper. Calculate the center of the card as (node.x + width/2, node.y + height/2). Calculate new transform to center this point in the viewport: get viewport dimensions from workspaceRef.current.getBoundingClientRect(), then set transform to {x: viewportWidth/2 - cardCenterX * 1.0, y: viewportHeight/2 - cardCenterY * 1.0, scale: 1.0}. Enable the animation state before setting transform, then disable it after ~300ms via setTimeout.",
+    "Step 4: Add the transition CSS to the canvas transform layer div at line 4641. Modify the style attribute to conditionally include `transition: 'transform 250ms ease-out'` when isAnimatingTransform is true. Also add the same transition to the grid background div so the grid pans smoothly too."
+  ],
+  "acceptance_criteria": [
+    "Pressing F with exactly one card selected smoothly pans and zooms the canvas so the card is centered at 100% zoom",
+    "Pressing F with no card selected shows the toast 'No card selected.'",
+    "Pressing F with multiple cards selected shows the toast 'Select a single card to focus.'",
+    "The transition takes approximately 200-300ms and looks smooth",
+    "The F key does nothing when focus is on an input, textarea, select, or contentEditable element",
+    "The F key does nothing when modifier keys (Ctrl/Meta/Alt/Shift) are held",
+    "npm run build completes without errors"
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it completes with exit code 0"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
