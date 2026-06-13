@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Pencil, X, Palette, Check } from 'lucide-react';
+import { Pencil, X, Palette, Check, Eye, EyeOff } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 
 // Theme options matching the THEMES constant in App.jsx
@@ -21,6 +21,7 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
   const [content, setContent] = useState('');
   const [theme, setTheme] = useState('blue');
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const themePickerRef = useRef(null);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
       setContent('');
       setTheme('blue');
     }
+    setShowPreview(false);
   }, [selectedNode?.id]);
 
   // Close theme picker when clicking outside
@@ -146,7 +148,7 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3 flex flex-col gap-3">
           {/* Title */}
-          <div>
+          <div className="shrink-0">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Title</label>
             <input
               type="text"
@@ -159,23 +161,34 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
           </div>
 
           {/* Content */}
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Content</label>
+          <div className="flex-1 flex flex-col min-h-0">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1 shrink-0">Content</label>
             <textarea
               value={content}
               onChange={handleContentChange}
               onFocus={() => onSnapshot()}
-              className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 placeholder-slate-400 resize-y focus:outline-none focus:ring-1 focus:ring-cyan-300 focus:border-cyan-300 min-h-[200px]"
+              className="w-full flex-1 text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 placeholder-slate-400 resize-none focus:outline-none focus:ring-1 focus:ring-cyan-300 focus:border-cyan-300 min-h-[120px]"
               placeholder="Write content here... (supports markdown)"
-              rows={10}
             />
           </div>
 
+          {/* Preview Toggle */}
+          <div className="shrink-0">
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-100 transition-colors text-slate-600"
+              title={showPreview ? 'Hide Preview' : 'Show Preview'}
+            >
+              {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
+            </button>
+          </div>
+
           {/* Markdown Preview */}
-          {content && (
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Preview</label>
-              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-xs text-slate-700 overflow-auto max-h-[300px]">
+          {showPreview && content && (
+            <div className="flex-1 flex flex-col min-h-0">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1 shrink-0">Preview</label>
+              <div className="flex-1 border border-slate-200 rounded-lg p-3 bg-slate-50 text-xs text-slate-700 overflow-auto min-h-[120px]">
                 <MarkdownRenderer content={content} isZoomedIn={true} />
               </div>
             </div>
