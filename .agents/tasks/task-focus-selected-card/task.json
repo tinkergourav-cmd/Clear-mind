@@ -1,0 +1,7 @@
+{
+  "task_id": "task-focus-selected-card",
+  "task_description": "Add F keyboard shortcut to focus (center and zoom reset to 100%) the currently selected card with smooth animation and validation messages for edge cases.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}
