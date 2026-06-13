@@ -22,5 +22,5 @@
     "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it completes with exit code 0"
   ],
   "blocked_reason": null,
-  "findings": "Implementation straightforward. All keyboard shortcut patterns followed exactly. Build passes cleanly with no warnings related to the changes."
+  "findings": "Implementation straightforward. All keyboard shortcut patterns followed exactly. Build passes cleanly with no warnings related to the changes. Post-review fix applied: added animTimerRef to store/clear the setTimeout, cleanup in useEffect return, and cancel animation on pointer-down/wheel events."
 }
