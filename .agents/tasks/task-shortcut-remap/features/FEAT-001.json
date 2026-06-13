@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Remap keyboard shortcuts: F->A (Timer/Alarm), I->E (Card Editor), add C (Clone Panel), E->M (Edit Mode), keep R (Reminder), C->L (Link/Connect nodes). Update all UI tooltips and hints.",
+  "status": "completed",
+  "steps": [
+    "Step 1: Change Timer/Alarm shortcut from F to A in the handleTimerKey useEffect",
+    "Step 2: Change Card Editor Panel shortcut from I to E in the handleCardEditorKey useEffect",
+    "Step 3: Change Edit Mode shortcut from E to M in the handleEditModeKey useEffect",
+    "Step 4: Remove M key from Mini Map handler (M is now used for Edit Mode)",
+    "Step 5: Change Connect/Link shortcut from C to L in the handleConnectKey useEffect",
+    "Step 6: Add new C key handler for toggling Clone Panel",
+    "Step 7: Update all UI titles/tooltips: 'Edit Mode (E)' -> 'Edit Mode (M)', 'Timer (F)' -> 'Alarm/Timer (A)', 'Card Editor' -> 'Card Editor (E)', 'Show Clone Nodes' -> 'Clone Panel (C)', 'Toggle Mini Map (M)' -> 'Toggle Mini Map'",
+    "Step 8: Update any comments that reference old shortcut keys"
+  ],
+  "acceptance_criteria": [
+    "A key toggles timer/alarm panel",
+    "E key toggles card editor panel",
+    "C key toggles clone panel",
+    "M key toggles edit mode",
+    "R key toggles reminder panel (unchanged)",
+    "L key links/connects two selected nodes",
+    "F key no longer triggers any action",
+    "I key no longer triggers any action",
+    "Mini Map M shortcut is removed (button still works)",
+    "All UI tooltips reflect new shortcut assignments",
+    "npm run build completes without errors"
+  ],
+  "verification": [
+    "Run 'cd /projects/sandbox/Clear-mind && npm run build' and confirm it succeeds with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "All shortcuts remapped successfully. The M key was reassigned from Mini Map to Edit Mode; the Mini Map toggle is still accessible via its toolbar button. Build passes with pre-existing chunk size warning."
+}

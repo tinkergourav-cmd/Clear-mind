@@ -1,0 +1,14 @@
+{
+  "task_id": "task-shortcut-remap",
+  "task_description": "Remap keyboard shortcuts to be more intuitive and first-letter-based. A=Alarm/Timer, E=Edit Card, C=Clone Panel, M=Edit Mode, R=Reminder, L=Link nodes.",
+  "status": "completed",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "skipped",
+    "docker_build": "skipped",
+    "summary": "npm run build succeeds. No test suite exists. Chunk size warning (837KB) is pre-existing."
+  }
+}
