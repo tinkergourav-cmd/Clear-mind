@@ -1,18 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Pencil, X } from 'lucide-react';
+import { Pencil, X, Palette, Check } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
+
+// Theme options matching the THEMES constant in App.jsx
+const THEME_OPTIONS = [
+  { key: 'blue', name: 'Ocean Blue', color: '#bfdbfe' },
+  { key: 'green', name: 'Fresh Green', color: '#bbf7d0' },
+  { key: 'pink', name: 'Soft Pink', color: '#fbcfe8' },
+  { key: 'yellow', name: 'Sunny Yellow', color: '#fef08a' },
+  { key: 'purple', name: 'Royal Purple', color: '#e9d5ff' },
+  { key: 'orange', name: 'Warm Orange', color: '#fed7aa' },
+  { key: 'teal', name: 'Cool Teal', color: '#99f6e4' },
+  { key: 'rose', name: 'Rose Red', color: '#fecdd3' },
+  { key: 'indigo', name: 'Deep Indigo', color: '#c7d2fe' },
+  { key: 'slate', name: 'Neutral Slate', color: '#e2e8f0' },
+];
 
 export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot, onClose }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [theme, setTheme] = useState('blue');
 
   useEffect(() => {
     if (selectedNode) {
       setTitle(selectedNode.title || '');
       setContent(selectedNode.content || '');
+      setTheme(selectedNode.theme || 'blue');
     } else {
       setTitle('');
       setContent('');
+      setTheme('blue');
     }
   }, [selectedNode?.id]);
 
@@ -26,6 +43,13 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
     const newContent = e.target.value;
     setContent(newContent);
     onUpdateNode({ content: newContent });
+  };
+
+  const handleThemeChange = (newTheme) => {
+    if (newTheme === theme) return;
+    onSnapshot();
+    setTheme(newTheme);
+    onUpdateNode({ theme: newTheme });
   };
 
   return (
@@ -78,6 +102,40 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
               placeholder="Write content here... (supports markdown)"
               rows={10}
             />
+          </div>
+
+          {/* Theme Color Picker */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1 mb-1.5">
+              <Palette className="w-3 h-3" />
+              Theme Color
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => handleThemeChange(opt.key)}
+                  className={`group relative flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all ${
+                    theme === opt.key
+                      ? 'border-cyan-400 bg-cyan-50/50 ring-1 ring-cyan-300'
+                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                  title={opt.name}
+                >
+                  <div
+                    className="w-7 h-7 rounded-full border border-slate-300/60 flex items-center justify-center shadow-sm"
+                    style={{ backgroundColor: opt.color }}
+                  >
+                    {theme === opt.key && (
+                      <Check className="w-3.5 h-3.5 text-slate-700" />
+                    )}
+                  </div>
+                  <span className="text-[9px] text-slate-500 truncate w-full text-center leading-tight">
+                    {opt.name}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Markdown Preview */}
