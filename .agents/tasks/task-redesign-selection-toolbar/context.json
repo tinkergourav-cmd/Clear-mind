@@ -1,0 +1,18 @@
+{
+  "project_type": "React SPA with Vite and Tailwind CSS",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite with npm scripts",
+  "test_framework": "None (no test files present)",
+  "build_command": "npm run build",
+  "test_command": "npm run build (no test suite - use build as validation)",
+  "verification_instructions": "Run npm run build to confirm no syntax/compile errors. Visually inspect the toolbar behavior if possible.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "npm install && npm run dev",
+  "environment_constraints": "Network available for npm installs. No test framework configured.",
+  "contribution_requirements": "No CONTRIBUTING.md found. Follow existing code patterns in App.jsx.",
+  "key_patterns": "Single large App.jsx file (~6200 lines). Uses Tailwind CSS for all styling. lucide-react for icons. State managed via useState hooks. All UI is inline JSX in the return statement. Fixed-position overlays use z-[80] class. Actions use takeSnapshot() before mutations for undo support.",
+  "relevant_files": [
+    "src/App.jsx (lines 6000-6065 - current toolbar, lines 1-15 - imports, lines 450-455 - multi-selection state)"
+  ],
+  "directory_structure": "Single-page React app. src/App.jsx is the monolithic component. Other src/ files are smaller extracted components (MiniMap, PinPanel, etc)."
+}

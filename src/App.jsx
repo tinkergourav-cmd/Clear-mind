@@ -450,6 +450,8 @@ export default function WorkflowApp() {
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [selectionBox, setSelectionBox] = useState(null);
   const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+  const [selectionMenuOpen, setSelectionMenuOpen] = useState(false);
+  const selectionMenuRef = useRef(null);
 
   // --- Toast Notification ---
   const [toastMessage, setToastMessage] = useState('');
@@ -1438,6 +1440,24 @@ export default function WorkflowApp() {
     window.addEventListener('keydown', handleEscapeKey);
     return () => window.removeEventListener('keydown', handleEscapeKey);
   }, [selectedNodeIds]);
+
+  // --- Close selection menu when selection is cleared ---
+  useEffect(() => {
+    if (selectedNodeIds.length === 0) {
+      setSelectionMenuOpen(false);
+    }
+  }, [selectedNodeIds]);
+
+  // --- Click-outside handler for selection menu ---
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (selectionMenuOpen && selectionMenuRef.current && !selectionMenuRef.current.contains(e.target)) {
+        setSelectionMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selectionMenuOpen]);
 
   // --- W key toggles mini map ---
   useEffect(() => {
@@ -5999,69 +6019,75 @@ export default function WorkflowApp() {
 
       {/* --- Multi-Select Floating Action Bar --- */}
       {selectedNodeIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl shadow-xl border border-slate-200">
-          <span className="text-sm font-semibold text-slate-600">{selectedNodeIds.length} selected</span>
-          <div className="w-px h-5 bg-slate-200"></div>
-          <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); const filteredGroups = ws.groups.filter(g => !selectedNodeIds.includes(g.id)); const filteredImages = (ws.images || []).filter(img => !selectedNodeIds.includes(img.id)); const filteredEdges = ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)); return { nodes: filtered, edges: filteredEdges, groups: computeLayout(filteredGroups, filtered), images: filteredImages }; }); setSelectedNodeIds([]); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Selected">
-            <Trash2 className="w-4 h-4" /> Delete
-          </button>
-          <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40 })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Duplicate Selected">
-            <Copy className="w-4 h-4" /> Duplicate
-          </button>
-          <button onClick={() => exportSelectedNodes(selectedNodeIds)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Export Selected" id="export-selected-btn">
-            <Download className="w-4 h-4" /> Export
-          </button>
-          <button onClick={() => {
-            if (selectedNodeIds.length === 2) {
-              const [sourceId, targetId] = selectedNodeIds;
-              const exists = edges.some(e => (e.source === sourceId && e.target === targetId) || (e.source === targetId && e.target === sourceId));
-              if (!exists) {
+        <div ref={selectionMenuRef} className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex flex-col items-center transition-opacity ${selectionMenuOpen ? 'opacity-100' : 'opacity-50 hover:opacity-75'}`}>
+          {selectionMenuOpen && (
+            <div className="mb-2 bg-white rounded-xl shadow-xl border border-slate-200 p-2 flex flex-col gap-1 min-w-[180px]">
+              <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); const filteredGroups = ws.groups.filter(g => !selectedNodeIds.includes(g.id)); const filteredImages = (ws.images || []).filter(img => !selectedNodeIds.includes(img.id)); const filteredEdges = ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)); return { nodes: filtered, edges: filteredEdges, groups: computeLayout(filteredGroups, filtered), images: filteredImages }; }); setSelectedNodeIds([]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left">
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+              <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40 })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors w-full text-left">
+                <Copy className="w-4 h-4" /> Duplicate
+              </button>
+              <button onClick={() => { exportSelectedNodes(selectedNodeIds); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors w-full text-left" id="export-selected-btn">
+                <Download className="w-4 h-4" /> Export
+              </button>
+              <button onClick={() => {
+                if (selectedNodeIds.length === 2) {
+                  const [sourceId, targetId] = selectedNodeIds;
+                  const exists = edges.some(e => (e.source === sourceId && e.target === targetId) || (e.source === targetId && e.target === sourceId));
+                  if (!exists) {
+                    takeSnapshot();
+                    updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+                    showToast('Connected');
+                  } else {
+                    showToast('Already connected');
+                  }
+                  setSelectedNodeIds([]);
+                } else {
+                  showToast('Select only 2 objects');
+                }
+                setSelectionMenuOpen(false);
+              }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors w-full text-left">
+                <Link2 className="w-4 h-4" /> Link
+              </button>
+              <button onClick={() => {
+                if (selectedNodeIds.length < 2) { setSelectionMenuOpen(false); return; }
                 takeSnapshot();
-                updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
-                showToast('Connected');
-              } else {
-                showToast('Already connected');
-              }
-              setSelectedNodeIds([]);
-            } else {
-              showToast('Select only 2 objects');
-            }
-          }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Link Selected (L)">
-            <Link2 className="w-4 h-4" /> Link
-          </button>
-          <button onClick={() => {
-            if (selectedNodeIds.length < 2) return;
-            takeSnapshot();
-            const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id));
-            const NODE_W = 280;
-            const NODE_H = 160;
-            const PADDING = 30;
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            selectedNodes.forEach(n => {
-              if (n.x < minX) minX = n.x;
-              if (n.y < minY) minY = n.y;
-              if (n.x + NODE_W > maxX) maxX = n.x + NODE_W;
-              if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
-            });
-            const groupX = minX - PADDING;
-            const groupY = minY - PADDING - 40;
-            const groupW = maxX - minX + PADDING * 2;
-            const groupH = maxY - minY + PADDING * 2 + 40;
-            const newGroupId = `g-${Date.now()}`;
-            updateActiveWorkspace(ws => {
-              const updatedNodes = ws.nodes.map(n => selectedNodeIds.includes(n.id) ? { ...n, groupId: newGroupId } : n);
-              const newGroup = { id: newGroupId, name: 'New Group', x: groupX, y: groupY, width: groupW, height: groupH, theme: 'blue', parentGroupId: null };
-              const updatedGroups = [...ws.groups, newGroup];
-              return { nodes: updatedNodes, groups: computeLayout(updatedGroups, updatedNodes) };
-            });
-            setSelectedNodeIds([]);
-          }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Group Selected">
-            <Layers className="w-4 h-4" /> Group
-          </button>
-          <div className="w-px h-5 bg-slate-200"></div>
-          <button onClick={() => setSelectedNodeIds([])} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Clear Selection">
-            <X className="w-4 h-4" />
-          </button>
+                const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id));
+                const NODE_W = 280;
+                const NODE_H = 160;
+                const PADDING = 30;
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                selectedNodes.forEach(n => {
+                  if (n.x < minX) minX = n.x;
+                  if (n.y < minY) minY = n.y;
+                  if (n.x + NODE_W > maxX) maxX = n.x + NODE_W;
+                  if (n.y + NODE_H > maxY) maxY = n.y + NODE_H;
+                });
+                const groupX = minX - PADDING;
+                const groupY = minY - PADDING - 40;
+                const groupW = maxX - minX + PADDING * 2;
+                const groupH = maxY - minY + PADDING * 2 + 40;
+                const newGroupId = `g-${Date.now()}`;
+                updateActiveWorkspace(ws => {
+                  const updatedNodes = ws.nodes.map(n => selectedNodeIds.includes(n.id) ? { ...n, groupId: newGroupId } : n);
+                  const newGroup = { id: newGroupId, name: 'New Group', x: groupX, y: groupY, width: groupW, height: groupH, theme: 'blue', parentGroupId: null };
+                  const updatedGroups = [...ws.groups, newGroup];
+                  return { nodes: updatedNodes, groups: computeLayout(updatedGroups, updatedNodes) };
+                });
+                setSelectedNodeIds([]);
+                setSelectionMenuOpen(false);
+              }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50 rounded-lg transition-colors w-full text-left">
+                <Layers className="w-4 h-4" /> Group
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 bg-white rounded-full shadow-xl border border-slate-200 min-w-[80px] py-1.5 px-3 cursor-pointer select-none" onClick={() => setSelectionMenuOpen(prev => !prev)}>
+            <span className="text-sm font-semibold text-slate-600">{selectedNodeIds.length} Selected</span>
+            <button onClick={(e) => { e.stopPropagation(); setSelectedNodeIds([]); }} className="ml-1 p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors" title="Clear Selection">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
