@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Pencil, X, Palette, Check } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 
@@ -20,6 +20,8 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [theme, setTheme] = useState('blue');
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const themePickerRef = useRef(null);
 
   useEffect(() => {
     if (selectedNode) {
@@ -32,6 +34,21 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
       setTheme('blue');
     }
   }, [selectedNode?.id]);
+
+  // Close theme picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target)) {
+        setShowThemePicker(false);
+      }
+    };
+    if (showThemePicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showThemePicker]);
+
+  const currentThemeColor = THEME_OPTIONS.find((opt) => opt.key === theme)?.color || '#bfdbfe';
 
   const handleTitleChange = (e) => {
     const newTitle = e.target.value;
@@ -55,18 +72,68 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
   return (
     <div className="w-[40vw] bg-white border-l border-slate-200 flex flex-col overflow-hidden shrink-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0 relative">
         <div className="flex items-center gap-2">
           <Pencil className="w-4 h-4 text-cyan-600" />
           <h3 className="text-sm font-bold text-slate-800">Card Editor</h3>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
-          title="Close"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {selectedNode && (
+            <div ref={themePickerRef} className="relative">
+              <button
+                onClick={() => setShowThemePicker(!showThemePicker)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-100 transition-colors"
+                title="Theme Color"
+              >
+                <div
+                  className="w-4 h-4 rounded border border-slate-300/60 shadow-sm"
+                  style={{ backgroundColor: currentThemeColor }}
+                />
+                <Palette className="w-3 h-3 text-slate-500" />
+              </button>
+              {showThemePicker && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-lg shadow-lg p-3 w-[260px]">
+                  <div className="grid grid-cols-5 gap-2">
+                    {THEME_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => {
+                          handleThemeChange(opt.key);
+                          setShowThemePicker(false);
+                        }}
+                        className={`group relative flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all ${
+                          theme === opt.key
+                            ? 'border-cyan-400 bg-cyan-50/50 ring-1 ring-cyan-300'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                        title={opt.name}
+                      >
+                        <div
+                          className="w-7 h-7 rounded-full border border-slate-300/60 flex items-center justify-center shadow-sm"
+                          style={{ backgroundColor: opt.color }}
+                        >
+                          {theme === opt.key && (
+                            <Check className="w-3.5 h-3.5 text-slate-700" />
+                          )}
+                        </div>
+                        <span className="text-[9px] text-slate-500 truncate w-full text-center leading-tight">
+                          {opt.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -102,40 +169,6 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
               placeholder="Write content here... (supports markdown)"
               rows={10}
             />
-          </div>
-
-          {/* Theme Color Picker */}
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1 mb-1.5">
-              <Palette className="w-3 h-3" />
-              Theme Color
-            </label>
-            <div className="grid grid-cols-5 gap-2">
-              {THEME_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => handleThemeChange(opt.key)}
-                  className={`group relative flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all ${
-                    theme === opt.key
-                      ? 'border-cyan-400 bg-cyan-50/50 ring-1 ring-cyan-300'
-                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                  title={opt.name}
-                >
-                  <div
-                    className="w-7 h-7 rounded-full border border-slate-300/60 flex items-center justify-center shadow-sm"
-                    style={{ backgroundColor: opt.color }}
-                  >
-                    {theme === opt.key && (
-                      <Check className="w-3.5 h-3.5 text-slate-700" />
-                    )}
-                  </div>
-                  <span className="text-[9px] text-slate-500 truncate w-full text-center leading-tight">
-                    {opt.name}
-                  </span>
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Markdown Preview */}
