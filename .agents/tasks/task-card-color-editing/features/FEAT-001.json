@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feature",
+  "description": "Add color picker section to CardEditorPanel that displays color swatches and syncs color changes in real time with the selected card",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Import GROUP_COLORS from ./taskConstants in CardEditorPanel.jsx",
+    "Step 2: Add a color state variable synced with selectedNode.color in the existing useEffect",
+    "Step 3: Add a color picker UI section between Title and Content showing clickable swatches using dotColor classes from GROUP_COLORS",
+    "Step 4: Implement click handler that updates local color state and calls onUpdateNode({ color: selectedColorId }) for immediate sync",
+    "Step 5: Highlight the currently selected color swatch with a ring or border indicator"
+  ],
+  "acceptance_criteria": [
+    "GROUP_COLORS is imported from ./taskConstants",
+    "A color state variable is added and synced from selectedNode.color when the selected card changes",
+    "Clickable color swatches are rendered between the Title and Content sections",
+    "Clicking a swatch immediately calls onUpdateNode({ color: colorId })",
+    "The currently selected color is visually highlighted",
+    "Switching cards updates the color state to match the new card's color",
+    "npm run build completes without errors"
+  ],
+  "verification": [
+    "Run 'cd /projects/sandbox/Clear-mind && npm run build' and confirm it succeeds with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}

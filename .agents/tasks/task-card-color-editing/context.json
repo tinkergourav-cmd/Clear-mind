@@ -1,0 +1,11 @@
+{
+  "project_type": "React + Vite single-page application (visual workspace/mind-mapping tool)",
+  "language": "JavaScript/JSX",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "None (no test files exist)",
+  "build_command": "npm run build",
+  "test_command": "npm run build (no test suite - use build as validation)",
+  "verification_instructions": "Run npm run build to verify no compilation errors.",
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "OPEN_INTERNET - full network access"
+}

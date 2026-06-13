@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Pencil, X } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
+import { GROUP_COLORS } from './taskConstants';
 
 export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot, onClose }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [color, setColor] = useState('blue');
 
   useEffect(() => {
     if (selectedNode) {
       setTitle(selectedNode.title || '');
       setContent(selectedNode.content || '');
+      setColor(selectedNode.color || 'blue');
     } else {
       setTitle('');
       setContent('');
+      setColor('blue');
     }
   }, [selectedNode?.id]);
 
@@ -26,6 +30,11 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
     const newContent = e.target.value;
     setContent(newContent);
     onUpdateNode({ content: newContent });
+  };
+
+  const handleColorChange = (colorId) => {
+    setColor(colorId);
+    onUpdateNode({ color: colorId });
   };
 
   return (
@@ -65,6 +74,25 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
               className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-cyan-300 focus:border-cyan-300"
               placeholder="Card title..."
             />
+          </div>
+
+          {/* Color */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {GROUP_COLORS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => handleColorChange(c.id)}
+                  title={c.name}
+                  className={`w-6 h-6 rounded-full ${c.dotColor} transition-all ${
+                    color === c.id
+                      ? 'ring-2 ring-offset-2 ring-cyan-500 scale-110'
+                      : 'hover:scale-110 hover:ring-1 hover:ring-offset-1 hover:ring-slate-300'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Content */}

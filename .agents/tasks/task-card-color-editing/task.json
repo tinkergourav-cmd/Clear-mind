@@ -1,0 +1,8 @@
+{
+  "task_id": "task-card-color-editing",
+  "task_description": "Add card color editing capability to the Card Editor Panel, allowing users to change a card's color directly from the editor with real-time synchronization.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null,
+  "verification": null
+}
