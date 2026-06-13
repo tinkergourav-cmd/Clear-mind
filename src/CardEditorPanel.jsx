@@ -1,22 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Pencil, X } from 'lucide-react';
+import { Pencil, X, Check } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
-import { GROUP_COLORS } from './taskConstants';
+
+// Color palette matching the THEMES used by the canvas renderer
+const THEME_COLORS = [
+  { id: 'blue', name: 'Ocean Blue', swatch: 'bg-blue-500' },
+  { id: 'green', name: 'Fresh Green', swatch: 'bg-emerald-500' },
+  { id: 'pink', name: 'Soft Pink', swatch: 'bg-pink-500' },
+  { id: 'yellow', name: 'Sunny Yellow', swatch: 'bg-yellow-500' },
+  { id: 'purple', name: 'Royal Purple', swatch: 'bg-purple-500' },
+  { id: 'orange', name: 'Warm Orange', swatch: 'bg-orange-500' },
+  { id: 'teal', name: 'Cool Teal', swatch: 'bg-teal-500' },
+  { id: 'rose', name: 'Rose Red', swatch: 'bg-rose-500' },
+  { id: 'indigo', name: 'Deep Indigo', swatch: 'bg-indigo-500' },
+  { id: 'slate', name: 'Neutral Slate', swatch: 'bg-slate-500' },
+];
 
 export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot, onClose }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [color, setColor] = useState('blue');
+  const [theme, setTheme] = useState('blue');
 
   useEffect(() => {
     if (selectedNode) {
       setTitle(selectedNode.title || '');
       setContent(selectedNode.content || '');
-      setColor(selectedNode.color || 'blue');
+      setTheme(selectedNode.theme || 'blue');
     } else {
       setTitle('');
       setContent('');
-      setColor('blue');
+      setTheme('blue');
     }
   }, [selectedNode?.id]);
 
@@ -33,8 +46,8 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
   };
 
   const handleColorChange = (colorId) => {
-    setColor(colorId);
-    onUpdateNode({ color: colorId });
+    setTheme(colorId);
+    onUpdateNode({ theme: colorId });
   };
 
   return (
@@ -80,17 +93,19 @@ export default function CardEditorPanel({ selectedNode, onUpdateNode, onSnapshot
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Color</label>
             <div className="flex flex-wrap gap-2">
-              {GROUP_COLORS.map((c) => (
+              {THEME_COLORS.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => handleColorChange(c.id)}
                   title={c.name}
-                  className={`w-6 h-6 rounded-full ${c.dotColor} transition-all ${
-                    color === c.id
-                      ? 'ring-2 ring-offset-2 ring-cyan-500 scale-110'
-                      : 'hover:scale-110 hover:ring-1 hover:ring-offset-1 hover:ring-slate-300'
+                  className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${c.swatch} ${
+                    theme === c.id
+                      ? 'ring-2 ring-offset-2 ring-cyan-500 scale-110 border-white'
+                      : 'border-transparent hover:scale-110 hover:ring-1 hover:ring-offset-1 hover:ring-slate-300'
                   }`}
-                />
+                >
+                  {theme === c.id && <Check className="w-3 h-3 text-white" />}
+                </button>
               ))}
             </div>
           </div>

@@ -23,5 +23,5 @@
     "Run 'cd /projects/sandbox/Clear-mind && npm run build' and confirm it succeeds with no errors"
   ],
   "blocked_reason": null,
-  "findings": "Build passes with pre-existing chunk size warning (835KB). No test suite exists. Color picker implemented between Title and Content sections with real-time sync via onUpdateNode."
+  "findings": "Build passes with pre-existing chunk size warning (835KB). No test suite exists. Color picker implemented between Title and Content sections with real-time sync via onUpdateNode. Fixed property name mismatch: changed from reading/writing node.color to node.theme to match the canvas renderer's THEMES system. Replaced GROUP_COLORS import with inline THEME_COLORS array matching all 10 canvas theme keys. Added Check icon for selected swatch indicator to match canvas color picker pattern."
 }
