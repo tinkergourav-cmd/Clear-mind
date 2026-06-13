@@ -3316,7 +3316,7 @@ export default function WorkflowApp() {
     });
   };
 
-  const reorderTask = (taskId, direction, partitionBy = 'section') => {
+  const reorderTask = (taskId, direction, partitionBy = 'section', targetPosition) => {
     setTasks(prev => {
       const task = prev.find(t => t.id === taskId);
       if (!task) return prev;
@@ -3329,6 +3329,39 @@ export default function WorkflowApp() {
         peerTasks = prev.filter(t => getTaskSection(t) === section).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       }
       const idx = peerTasks.findIndex(t => t.id === taskId);
+
+      if (direction === 'top') {
+        if (idx === 0) return prev;
+        // Re-index: place this task at position 1, shift others down
+        const reindexed = {};
+        const others = peerTasks.filter(t => t.id !== taskId);
+        reindexed[taskId] = 1;
+        others.forEach((t, i) => { reindexed[t.id] = i + 2; });
+        return prev.map(t => reindexed[t.id] !== undefined ? { ...t, sortOrder: reindexed[t.id] } : t);
+      }
+
+      if (direction === 'bottom') {
+        if (idx === peerTasks.length - 1) return prev;
+        // Re-index: place this task at end, others get sequential from 1
+        const reindexed = {};
+        const others = peerTasks.filter(t => t.id !== taskId);
+        others.forEach((t, i) => { reindexed[t.id] = i + 1; });
+        reindexed[taskId] = others.length + 1;
+        return prev.map(t => reindexed[t.id] !== undefined ? { ...t, sortOrder: reindexed[t.id] } : t);
+      }
+
+      if (direction === 'toPosition') {
+        const pos = Math.max(1, Math.min(targetPosition || 1, peerTasks.length));
+        if (pos === idx + 1) return prev;
+        // Remove task from list and insert at target position (1-based)
+        const others = peerTasks.filter(t => t.id !== taskId);
+        others.splice(pos - 1, 0, task);
+        const reindexed = {};
+        others.forEach((t, i) => { reindexed[t.id] = i + 1; });
+        return prev.map(t => reindexed[t.id] !== undefined ? { ...t, sortOrder: reindexed[t.id] } : t);
+      }
+
+      // Existing up/down logic
       const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
       if (swapIdx < 0 || swapIdx >= peerTasks.length) return prev;
       // Re-index peer tasks with sequential sortOrder to ensure unique values

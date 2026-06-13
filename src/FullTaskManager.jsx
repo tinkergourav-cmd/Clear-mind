@@ -18,6 +18,7 @@ import {
   Pencil,
   ChevronUp,
   Palette,
+  MoreVertical,
 } from 'lucide-react';
 import { GROUP_COLORS } from './taskConstants';
 
@@ -78,8 +79,12 @@ export default function FullTaskManager({
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [statusDropdownTaskId, setStatusDropdownTaskId] = useState(null);
   const [groupDropdownTaskId, setGroupDropdownTaskId] = useState(null);
+  const [reorderDropdownTaskId, setReorderDropdownTaskId] = useState(null);
+  const [moveToPositionTaskId, setMoveToPositionTaskId] = useState(null);
+  const [positionInputValue, setPositionInputValue] = useState('');
   const statusDropdownRef = useRef(null);
   const groupDropdownRef = useRef(null);
+  const reorderDropdownRef = useRef(null);
 
   // New task form state
   const [newTitle, setNewTitle] = useState('');
@@ -111,10 +116,15 @@ export default function FullTaskManager({
       if (groupDropdownTaskId && groupDropdownRef.current && !groupDropdownRef.current.contains(e.target)) {
         setGroupDropdownTaskId(null);
       }
+      if (reorderDropdownTaskId && reorderDropdownRef.current && !reorderDropdownRef.current.contains(e.target)) {
+        setReorderDropdownTaskId(null);
+        setMoveToPositionTaskId(null);
+        setPositionInputValue('');
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [statusDropdownTaskId, groupDropdownTaskId]);
+  }, [statusDropdownTaskId, groupDropdownTaskId, reorderDropdownTaskId]);
 
   if (!showPanel) return null;
 
@@ -638,6 +648,86 @@ export default function FullTaskManager({
                         >
                           <ChevronDown className="w-3 h-3" />
                         </button>
+                        <div className="relative" ref={reorderDropdownTaskId === task.id ? reorderDropdownRef : null}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReorderDropdownTaskId(reorderDropdownTaskId === task.id ? null : task.id);
+                              setMoveToPositionTaskId(null);
+                              setPositionInputValue('');
+                              setStatusDropdownTaskId(null);
+                              setGroupDropdownTaskId(null);
+                            }}
+                            className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+                            title="More reorder options"
+                          >
+                            <MoreVertical className="w-3 h-3" />
+                          </button>
+                          {reorderDropdownTaskId === task.id && (
+                            <div className="absolute top-full right-0 mt-0.5 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 min-w-[140px]">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onReorderTask(task.id, 'top', 'group');
+                                  setReorderDropdownTaskId(null);
+                                }}
+                                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
+                              >
+                                Move to Top
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onReorderTask(task.id, 'bottom', 'group');
+                                  setReorderDropdownTaskId(null);
+                                }}
+                                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
+                              >
+                                Move to Bottom
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMoveToPositionTaskId(task.id);
+                                  setPositionInputValue('');
+                                }}
+                                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
+                              >
+                                Move to Position...
+                              </button>
+                              {moveToPositionTaskId === task.id && (
+                                <div className="px-3 py-1.5">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    autoFocus
+                                    value={positionInputValue}
+                                    onChange={(e) => setPositionInputValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      e.stopPropagation();
+                                      if (e.key === 'Enter') {
+                                        const pos = parseInt(positionInputValue, 10);
+                                        if (pos && pos > 0) {
+                                          onReorderTask(task.id, 'toPosition', 'group', pos);
+                                        }
+                                        setReorderDropdownTaskId(null);
+                                        setMoveToPositionTaskId(null);
+                                        setPositionInputValue('');
+                                      }
+                                      if (e.key === 'Escape') {
+                                        setMoveToPositionTaskId(null);
+                                        setPositionInputValue('');
+                                      }
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    placeholder="Position #"
+                                    className="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Group dropdown */}
