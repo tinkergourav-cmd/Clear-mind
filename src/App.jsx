@@ -1502,12 +1502,12 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleReminderKey);
   }, []);
 
-  // --- I key toggles card editor panel ---
+  // --- E key toggles card editor panel ---
   useEffect(() => {
     const handleCardEditorKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.key === 'i' || e.key === 'I') {
+      if (e.key === 'e' || e.key === 'E') {
         e.preventDefault();
         setShowCardEditorPanel(prev => !prev);
       }
@@ -1543,12 +1543,12 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleTaskKey);
   }, []);
 
-  // --- F key toggles timer panel ---
+  // --- A key toggles timer/alarm panel ---
   useEffect(() => {
     const handleTimerKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.key === 'f' || e.key === 'F') {
+      if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
         setShowTimer(prev => !prev);
       }
@@ -1557,22 +1557,7 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleTimerKey);
   }, []);
 
-  // --- E key toggles edit mode ---
-  useEffect(() => {
-    const handleEditModeKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-      if (e.key === 'e' || e.key === 'E') {
-        e.preventDefault();
-        setEditMode(prev => {
-          if (prev) setEditingTextNode(null);
-          return !prev;
-        });
-      }
-    };
-    window.addEventListener('keydown', handleEditModeKey);
-    return () => window.removeEventListener('keydown', handleEditModeKey);
-  }, []);
+
 
   // --- Reminder Scheduling Engine ---
   useEffect(() => {
@@ -1698,34 +1683,19 @@ export default function WorkflowApp() {
     return () => window.removeEventListener('keydown', handleNewCardKey);
   }, []);
 
-  // --- C key connects two selected objects ---
+  // --- C key toggles clone panel ---
   useEffect(() => {
-    const handleConnectKey = (e) => {
+    const handleCloneKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (e.key === 'c' || e.key === 'C') {
-        if (selectedNodeIds.length < 2) return;
         e.preventDefault();
-        if (selectedNodeIds.length === 2) {
-          const [sourceId, targetId] = selectedNodeIds;
-          const currentEdges = stateRef.current.workspaces.find(w => w.id === stateRef.current.activeTab)?.edges || [];
-          const exists = currentEdges.some(edge => (edge.source === sourceId && edge.target === targetId) || (edge.source === targetId && edge.target === sourceId));
-          if (!exists) {
-            takeSnapshot();
-            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
-            showToast('Connected');
-          } else {
-            showToast('Already connected');
-          }
-          setSelectedNodeIds([]);
-        } else {
-          showToast('Select only 2 objects');
-        }
+        setShowClonePanel(prev => !prev);
       }
     };
-    window.addEventListener('keydown', handleConnectKey);
-    return () => window.removeEventListener('keydown', handleConnectKey);
-  }, [selectedNodeIds, takeSnapshot, updateActiveWorkspace, showToast]);
+    window.addEventListener('keydown', handleCloneKey);
+    return () => window.removeEventListener('keydown', handleCloneKey);
+  }, []);
 
   // --- Arrow key movement for selected nodes ---
   useEffect(() => {
@@ -4471,7 +4441,7 @@ export default function WorkflowApp() {
                 </div>
                 <button
                   onClick={() => setShowClonePanel(!showClonePanel)}
-                  title="Show Clone Nodes"
+                  title="Show Clone Nodes (C)"
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all mt-1.5 w-full ${showClonePanel ? 'bg-violet-100 text-violet-700 border border-violet-300' : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'}`}
                 >
                   <Copy className="w-3.5 h-3.5" /> Show Clone Nodes
@@ -4499,7 +4469,7 @@ export default function WorkflowApp() {
                 </button>
                 <button
                   onClick={() => setShowCardEditorPanel(!showCardEditorPanel)}
-                  title="Card Editor"
+                  title="Card Editor (E)"
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all mt-1.5 w-full ${showCardEditorPanel ? 'bg-cyan-100 text-cyan-700 border border-cyan-300' : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200'}`}
                 >
                   <Pencil className="w-3.5 h-3.5" /> Card Editor
@@ -5283,7 +5253,7 @@ export default function WorkflowApp() {
                   });
                 }}
                 className={`p-1.5 sm:p-2 rounded-md transition-colors ${editMode ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}
-                title="Edit Mode (E)"
+                title="Edit Mode"
               >
                 {editMode ? <Pencil className="w-4 h-4 sm:w-5 sm:h-5" /> : <MousePointer className="w-4 h-4 sm:w-5 sm:h-5" />}
               </button>
@@ -5291,7 +5261,7 @@ export default function WorkflowApp() {
               <button
                 onClick={() => { setShowTimer(prev => !prev); if (timerDone) setTimerDone(false); }}
                 className={`p-1.5 sm:p-2 rounded-md transition-colors ${showTimer ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-100'} ${timerDone ? 'animate-pulse ring-2 ring-orange-400' : ''}`}
-                title="Timer (F)"
+                title="Timer (A)"
               >
                 <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
@@ -5928,7 +5898,7 @@ export default function WorkflowApp() {
             } else {
               showToast('Select only 2 objects');
             }
-          }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Connect Selected (C)">
+          }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Connect Selected">
             <Link2 className="w-4 h-4" /> Connect
           </button>
           <button onClick={() => {
