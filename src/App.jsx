@@ -383,6 +383,7 @@ export default function WorkflowApp() {
   const fileInputRef = useRef(null);
   const fullBackupInputRef = useRef(null);
   const partialImportInputRef = useRef(null);
+  const animTimerRef = useRef(null);
 
   // --- History (Undo/Redo) States ---
   const pastRef = useRef([]);
@@ -542,6 +543,8 @@ export default function WorkflowApp() {
   const handleWheel = useCallback((e) => {
     e.preventDefault();
     setEditingPinOnCanvas(null);
+    if (animTimerRef.current) { clearTimeout(animTimerRef.current); animTimerRef.current = null; }
+    setIsAnimatingTransform(false);
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setTransform(prev => {
       const newScale = Math.max(0.2, Math.min(3, prev.scale + delta));
@@ -1481,13 +1484,20 @@ export default function WorkflowApp() {
           y: rect.height / 2 - cardCenterY,
           scale: 1.0
         };
+        if (animTimerRef.current) clearTimeout(animTimerRef.current);
         setIsAnimatingTransform(true);
         setTransform(newTransform);
-        setTimeout(() => setIsAnimatingTransform(false), 300);
+        animTimerRef.current = setTimeout(() => {
+          setIsAnimatingTransform(false);
+          animTimerRef.current = null;
+        }, 300);
       }
     };
     window.addEventListener('keydown', handleFocusKey);
-    return () => window.removeEventListener('keydown', handleFocusKey);
+    return () => {
+      window.removeEventListener('keydown', handleFocusKey);
+      if (animTimerRef.current) { clearTimeout(animTimerRef.current); animTimerRef.current = null; }
+    };
   }, [selectedNodeIds, nodes, showToast, getNodeDimensions]);
 
   // --- P key toggles pin visibility, PP (double-press) toggles pin panel, Shift+P drops pin at viewport center ---
@@ -2692,6 +2702,8 @@ export default function WorkflowApp() {
   // --- Pointer Interactions (Pan, Drag & Resize) ---
   const handlePointerDownMain = (e) => {
     if (e.button !== 0) return;
+    if (animTimerRef.current) { clearTimeout(animTimerRef.current); animTimerRef.current = null; }
+    setIsAnimatingTransform(false);
 
     if (isSelectingTaskLocation) {
       const rect = workspaceRef.current.getBoundingClientRect();
