@@ -1450,8 +1450,9 @@ export default function WorkflowApp() {
 
   // --- Click-outside handler for selection menu ---
   useEffect(() => {
+    if (!selectionMenuOpen) return;
     const handleClickOutside = (e) => {
-      if (selectionMenuOpen && selectionMenuRef.current && !selectionMenuRef.current.contains(e.target)) {
+      if (selectionMenuRef.current && !selectionMenuRef.current.contains(e.target)) {
         setSelectionMenuOpen(false);
       }
     };
@@ -6083,6 +6084,7 @@ export default function WorkflowApp() {
             </div>
           )}
           <div className="flex items-center gap-1.5 bg-white rounded-full shadow-xl border border-slate-200 min-w-[80px] py-1.5 px-3 cursor-pointer select-none" onClick={() => setSelectionMenuOpen(prev => !prev)}>
+            <ChevronUp className="w-3 h-3 text-slate-400" />
             <span className="text-sm font-semibold text-slate-600">{selectedNodeIds.length} Selected</span>
             <button onClick={(e) => { e.stopPropagation(); setSelectedNodeIds([]); }} className="ml-1 p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors" title="Clear Selection">
               <X className="w-3.5 h-3.5" />
