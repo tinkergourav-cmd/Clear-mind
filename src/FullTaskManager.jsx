@@ -19,6 +19,8 @@ import {
   ChevronUp,
   Palette,
   MoreVertical,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { GROUP_COLORS } from './taskConstants';
 
@@ -69,6 +71,7 @@ export default function FullTaskManager({
   onUpdateGroupColor,
   onReorderGroup,
   mode = 'fullscreen',
+  onToggleFullscreen,
 }) {
   const isPanel = mode === 'panel';
   const [searchQuery, setSearchQuery] = useState('');
@@ -334,6 +337,17 @@ export default function FullTaskManager({
             <Plus className="w-3.5 h-3.5" />
             New Task
           </button>
+
+          {/* Toggle Fullscreen */}
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+              title={mode === 'fullscreen' ? 'Restore Split View (TT)' : 'Expand Task Manager (TT)'}
+            >
+              {mode === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          )}
 
           {/* Close */}
           <button

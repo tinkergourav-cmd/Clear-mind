@@ -5910,6 +5910,7 @@ export default function WorkflowApp() {
             onUpdateGroupColor={updateTaskGroupColor}
             onReorderGroup={reorderTaskGroup}
             mode={taskPanelMode}
+            onToggleFullscreen={() => setTaskPanelMode(prev => prev === 'fullscreen' ? 'panel' : 'fullscreen')}
           />
         )}
 
