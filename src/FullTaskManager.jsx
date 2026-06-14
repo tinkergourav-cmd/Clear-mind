@@ -274,6 +274,17 @@ export default function FullTaskManager({
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0 flex-wrap">
         <h2 className="text-sm font-bold text-slate-800 shrink-0">Task Manager</h2>
 
+        {/* Toggle Fullscreen */}
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            title={mode === 'fullscreen' ? 'Restore Split View (TT)' : 'Expand Task Manager (TT)'}
+          >
+            {mode === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        )}
+
         {/* Search */}
         <div className={`flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 ${isPanel ? 'flex-1 min-w-0' : 'flex-1 max-w-xs'}`}>
           <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -337,17 +348,6 @@ export default function FullTaskManager({
             <Plus className="w-3.5 h-3.5" />
             New Task
           </button>
-
-          {/* Toggle Fullscreen */}
-          {onToggleFullscreen && (
-            <button
-              onClick={onToggleFullscreen}
-              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
-              title={mode === 'fullscreen' ? 'Restore Split View (TT)' : 'Expand Task Manager (TT)'}
-            >
-              {mode === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          )}
 
           {/* Close */}
           <button
