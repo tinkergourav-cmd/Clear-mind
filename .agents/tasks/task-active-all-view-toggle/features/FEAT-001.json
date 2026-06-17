@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Add Active/All view toggle to the Task Panel that defaults to Active mode, hiding completed tasks. In All mode, show all tasks with completed tasks sorted to the bottom of each group and rendered at reduced opacity (50-60%).",
+  "status": "completed",
+  "steps": [
+    "In /projects/sandbox/Clear-mind/src/FullTaskManager.jsx, add a new state variable `viewMode` with useState defaulting to 'active'. This is separate from the existing `activeFilter` state which handles status-based filtering.",
+    "Add a simple two-button toggle (Active / All) in the toolbar area, positioned prominently near the top of the Task Panel, before or alongside the existing status filter pills. Use the same small pill/button styling pattern as the existing filterButtons but visually distinguish it (e.g., slightly larger or with a divider). The Active button should be highlighted when viewMode is 'active', and the All button when viewMode is 'all'.",
+    "Modify the `groupedTasks` useMemo logic: when viewMode is 'active', filter out tasks with status === 'completed' (in addition to any existing activeFilter). When viewMode is 'all', keep all tasks but sort completed tasks to the end within each group (after the normal sortOrder sort, partition into incomplete-first and completed-last).",
+    "In the task row rendering (the map over groupTasks), add a conditional CSS class: when viewMode is 'all' and the task's status is 'completed', apply 'opacity-50' (or opacity-55/60 via a custom style) to the entire task row div to visually de-emphasize completed tasks.",
+    "Ensure the existing status filter pills still work correctly alongside the new view toggle. If viewMode is 'active', the 'completed' status filter button should still be visible but selecting it would show no results (since active mode hides completed tasks). Alternatively, when viewMode is 'active', simply hide the 'Completed' filter pill since it would be contradictory."
+  ],
+  "acceptance_criteria": [
+    "The Task Panel opens in Active mode by default, showing only incomplete tasks (todo, in_progress, waiting).",
+    "Clicking 'All' in the view toggle shows all tasks including completed ones.",
+    "In All mode, completed tasks appear at the bottom of each group, after all incomplete tasks.",
+    "In All mode, completed tasks are rendered at reduced opacity (approximately 50-60%) to visually separate them from active tasks.",
+    "The existing search and status filter functionality continues to work correctly.",
+    "The toggle is visually clear and uses styling consistent with the rest of the Task Panel toolbar.",
+    "Running `npm run build` succeeds without errors."
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits with code 0 and no compilation errors."
+  ],
+  "blocked_reason": null,
+  "findings": "Build passes successfully. No test framework configured - verification limited to npm run build. The toggle uses a pill-style segmented control with bg-slate-200 background and white active state, positioned before the status filter pills. The Completed filter pill is hidden in active mode to avoid confusion."
+}
