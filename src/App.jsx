@@ -971,11 +971,15 @@ export default function WorkflowApp() {
       
       const checkOtherTabs = () => {
         const stored = localStorage.getItem(storageKey);
-        if (stored && stored !== myId) {
-          const parsed = JSON.parse(stored);
-          if (Date.now() - parsed.timestamp < 10000) {
-            setIsMultiTab(true);
-          } else {
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed.id !== myId && Date.now() - parsed.timestamp < 10000) {
+              setIsMultiTab(true);
+            } else {
+              setIsMultiTab(false);
+            }
+          } catch {
             setIsMultiTab(false);
           }
         }
@@ -1009,15 +1013,17 @@ export default function WorkflowApp() {
   }, []);
 
   // --- Export Reminder Breathing Animation (every 5 minutes) ---
+  const exportBreathTimeoutRef = useRef(null);
   useEffect(() => {
     exportBreathTimerRef.current = setInterval(() => {
       setShowExportBreath(true);
       // Remove animation class after animation completes (3.5s)
-      setTimeout(() => setShowExportBreath(false), 3500);
+      exportBreathTimeoutRef.current = setTimeout(() => setShowExportBreath(false), 3500);
     }, 300000); // 5 minutes = 300000ms
 
     return () => {
       if (exportBreathTimerRef.current) clearInterval(exportBreathTimerRef.current);
+      if (exportBreathTimeoutRef.current) clearTimeout(exportBreathTimeoutRef.current);
     };
   }, []);
 
@@ -4549,22 +4555,22 @@ export default function WorkflowApp() {
         </div>
 
         {/* --- Header Notification Indicators --- */}
-        <div className="hidden sm:flex items-center gap-2 sm:gap-3">
-          {/* Multi-tab warning - conditional */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Multi-tab warning - conditional, icon-only on xs, full on sm+ */}
           {isMultiTab && (
             <div
-              className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg cursor-default"
+              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg cursor-default"
               title="This canvas is currently open in another tab or window. To reduce the risk of data conflicts, refresh before starting work and export your data before leaving. For best reliability, work in only a single tab at a time and keep just one tab open per device."
             >
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Open in another tab</span>
+              <span className="hidden sm:inline text-xs font-medium text-amber-700 whitespace-nowrap">Open in another tab</span>
             </div>
           )}
 
-          {/* Export reminder - always visible */}
-          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg cursor-default ${showExportBreath ? 'export-breathe' : ''}`} style={{ opacity: showExportBreath ? undefined : 0.7 }}>
+          {/* Export reminder - always visible, icon-only on xs, full on sm+ */}
+          <div className={`flex items-center gap-1.5 px-1.5 sm:px-2 py-0.5 rounded-lg cursor-default ${showExportBreath ? 'export-breathe' : ''}`} style={{ opacity: showExportBreath ? undefined : 0.7 }}>
             <span className="text-xs shrink-0">💾</span>
-            <span className="text-xs font-medium text-slate-500 whitespace-nowrap">Don't forget to export</span>
+            <span className="hidden sm:inline text-xs font-medium text-slate-500 whitespace-nowrap">Don't forget to export</span>
           </div>
         </div>
 
