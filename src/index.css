@@ -70,3 +70,14 @@ html, body, #root {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #64748b;
 }
+
+/* Export reminder breathing animation */
+@keyframes export-breathe {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+.export-breathe {
+  animation: export-breathe 3.5s ease-in-out 1;
+}

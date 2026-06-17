@@ -7,7 +7,8 @@ import {
   Copy, ArrowUp, ArrowDown, RefreshCw, LayoutList, MonitorSpeaker,
   MoreVertical, ImageIcon, ChevronUp, Scissors, ClipboardPaste,
   Lock, Shield, Eye, EyeOff, GitBranch, Map, Timer,
-  MapPin, Bell, Pencil, MousePointer, ListTodo, Cloud, CloudOff, Loader
+  MapPin, Bell, Pencil, MousePointer, ListTodo, Cloud, CloudOff, Loader,
+  AlertTriangle
 } from 'lucide-react';
 import MiniMap from './MiniMap';
 import PinPanel, { PIN_ICONS } from './PinPanel';
@@ -469,6 +470,12 @@ export default function WorkflowApp() {
   const [mobileSheet, setMobileSheet] = useState(null);
   const [expandedOutlineCards, setExpandedOutlineCards] = useState({});
 
+  // --- Header Notification Indicators ---
+  const [isMultiTab, setIsMultiTab] = useState(false);
+  const [showExportBreath, setShowExportBreath] = useState(false);
+  const exportBreathTimerRef = useRef(null);
+  const broadcastChannelRef = useRef(null);
+
   // --- Password Protection ---
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [storedPassword, setStoredPassword] = useState('');
@@ -927,6 +934,92 @@ export default function WorkflowApp() {
     }
     return () => { if (timerNotificationTimerRef.current) clearTimeout(timerNotificationTimerRef.current); };
   }, [timerNotification]);
+
+  // --- Multi-Tab Detection via BroadcastChannel ---
+  useEffect(() => {
+    let channel = null;
+    let heartbeatInterval = null;
+    let tabTimeout = null;
+    const CHANNEL_NAME = 'thoughtflow-tab-presence';
+
+    try {
+      channel = new BroadcastChannel(CHANNEL_NAME);
+      broadcastChannelRef.current = channel;
+
+      // When we receive a message from another tab
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === 'presence') {
+          setIsMultiTab(true);
+          // Reset timeout - if no heartbeat for 10s, assume other tab closed
+          if (tabTimeout) clearTimeout(tabTimeout);
+          tabTimeout = setTimeout(() => setIsMultiTab(false), 10000);
+        } else if (event.data && event.data.type === 'leave') {
+          if (tabTimeout) clearTimeout(tabTimeout);
+          tabTimeout = setTimeout(() => setIsMultiTab(false), 2000);
+        }
+      };
+
+      // Broadcast our presence immediately and on interval
+      channel.postMessage({ type: 'presence' });
+      heartbeatInterval = setInterval(() => {
+        channel.postMessage({ type: 'presence' });
+      }, 4000);
+    } catch (e) {
+      // BroadcastChannel not supported, fallback to localStorage
+      const storageKey = 'thoughtflow-tab-id';
+      const myId = Date.now() + '-' + Math.random().toString(36).slice(2);
+      
+      const checkOtherTabs = () => {
+        const stored = localStorage.getItem(storageKey);
+        if (stored && stored !== myId) {
+          const parsed = JSON.parse(stored);
+          if (Date.now() - parsed.timestamp < 10000) {
+            setIsMultiTab(true);
+          } else {
+            setIsMultiTab(false);
+          }
+        }
+      };
+
+      localStorage.setItem(storageKey, JSON.stringify({ id: myId, timestamp: Date.now() }));
+      heartbeatInterval = setInterval(() => {
+        localStorage.setItem(storageKey, JSON.stringify({ id: myId, timestamp: Date.now() }));
+        checkOtherTabs();
+      }, 4000);
+
+      const handleStorage = (e) => {
+        if (e.key === storageKey) checkOtherTabs();
+      };
+      window.addEventListener('storage', handleStorage);
+      
+      return () => {
+        clearInterval(heartbeatInterval);
+        window.removeEventListener('storage', handleStorage);
+      };
+    }
+
+    return () => {
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      if (tabTimeout) clearTimeout(tabTimeout);
+      if (channel) {
+        channel.postMessage({ type: 'leave' });
+        channel.close();
+      }
+    };
+  }, []);
+
+  // --- Export Reminder Breathing Animation (every 5 minutes) ---
+  useEffect(() => {
+    exportBreathTimerRef.current = setInterval(() => {
+      setShowExportBreath(true);
+      // Remove animation class after animation completes (3.5s)
+      setTimeout(() => setShowExportBreath(false), 3500);
+    }, 300000); // 5 minutes = 300000ms
+
+    return () => {
+      if (exportBreathTimerRef.current) clearInterval(exportBreathTimerRef.current);
+    };
+  }, []);
 
   // Keep projectsRef in sync with projects state for debounced localStorage writes
   useEffect(() => {
@@ -4455,6 +4548,25 @@ export default function WorkflowApp() {
           </div>
         </div>
 
+        {/* --- Header Notification Indicators --- */}
+        <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+          {/* Multi-tab warning - conditional */}
+          {isMultiTab && (
+            <div
+              className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg cursor-default"
+              title="This canvas is currently open in another tab or window. To reduce the risk of data conflicts, refresh before starting work and export your data before leaving. For best reliability, work in only a single tab at a time and keep just one tab open per device."
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Open in another tab</span>
+            </div>
+          )}
+
+          {/* Export reminder - always visible */}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg cursor-default ${showExportBreath ? 'export-breathe' : ''}`} style={{ opacity: showExportBreath ? undefined : 0.7 }}>
+            <span className="text-xs shrink-0">💾</span>
+            <span className="text-xs font-medium text-slate-500 whitespace-nowrap">Don't forget to export</span>
+          </div>
+        </div>
 
         <div className="relative flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* Firebase Sync Status Indicator */}

@@ -1,0 +1,20 @@
+{
+  "project_type": "React 18 single-page canvas app (ThoughtFlow) built with Vite 6 and Tailwind CSS 3",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "No test framework configured",
+  "build_command": "npm run build",
+  "test_command": "No test command available",
+  "verification_instructions": "Run npm run build to verify the project builds successfully without errors",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "Standard network mode - can install packages. No test framework present.",
+  "contribution_requirements": "No CONTRIBUTING.md found. ReminderPanel.jsx must NOT be modified.",
+  "key_patterns": "All UI in a single App.jsx file (~6000+ lines). Header is a <header> element at line ~4407-4542 with justify-between layout (left section flex-1, right section shrink-0). Tailwind CSS utility classes used throughout. lucide-react for all icons. Existing ReminderPanel is in the sidebar, not in the header.",
+  "relevant_files": [
+    "src/App.jsx (header at lines 4407-4542, imports at top)",
+    "src/index.css (global styles, keyframe animations go here)",
+    "tailwind.config.js (extend animations/keyframes if needed)"
+  ],
+  "directory_structure": "Single src/ directory with App.jsx as the monolithic component, supporting components (ReminderPanel, CardEditorPanel, FullTaskManager, MiniMap, PinPanel, MarkdownRenderer), and CSS in index.css. Build config at root (vite.config.js, tailwind.config.js, postcss.config.js)."
+}

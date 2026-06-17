@@ -1,0 +1,7 @@
+{
+  "task_id": "task-header-notifications",
+  "task_description": "Add two lightweight notification indicators in the header: a conditional multi-tab warning (visible only when same URL is open in another tab) and a permanent export reminder with a gentle breathing animation every 5 minutes. These are passive safety indicators separate from the existing ReminderPanel system.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}

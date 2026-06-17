@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Add two header notification indicators: a conditional multi-tab warning and a permanent export reminder with breathing animation. These go between the left and right sections of the header in App.jsx. A CSS keyframe animation is added to index.css for the breathing effect. The existing ReminderPanel must NOT be modified or interfered with.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Add a CSS keyframe animation in src/index.css for the export reminder breathing effect. The animation should transition from slightly dim (opacity ~0.5) to slightly brighter (opacity ~1) and back. It should be a single gentle cycle lasting about 3-4 seconds (the trigger timing is handled in JS every 5 minutes). Name it something like 'export-breathe'.",
+    "Step 2: In src/App.jsx, add state for multi-tab detection. Use a BroadcastChannel (with fallback to localStorage events) to detect when the same app is open in another tab. Add a useState for `isMultiTab` (boolean) and a useEffect that sets up the BroadcastChannel listener and heartbeat. On mount, broadcast a presence message; if another tab responds, set isMultiTab to true. On unmount, broadcast a leave message. Also add state for the export reminder animation: `showExportBreath` (boolean) toggled by a setInterval every 5 minutes to trigger the CSS animation class, then removed after the animation completes (~4s).",
+    "Step 3: In the header JSX (around line 4455, between the closing </div> of the left section and the opening <div> of the right section), insert a new middle section: a flex container with the two indicators. Structure: <div className='flex items-center gap-2 sm:gap-3'> containing (1) the conditional multi-tab warning and (2) the always-visible export reminder.",
+    "Step 4: Multi-tab warning indicator: Render conditionally when `isMultiTab` is true. Use a <div> with a tooltip (title attribute) containing the full warning message. Display an amber/yellow warning icon (AlertTriangle from lucide-react or the unicode warning emoji) with short text like 'Open in another tab'. Style with amber/yellow colors (text-amber-600, bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5) - visible but not aggressive. The tooltip text: 'This canvas is currently open in another tab or window. To reduce the risk of data conflicts, refresh before starting work and export your data before leaving. For best reliability, work in only a single tab at a time and keep just one tab open per device.'",
+    "Step 5: Export reminder indicator: Always visible. Show a small element with a save/export icon (or the floppy disk emoji) and text 'Don't forget to export'. Style subtly (text-slate-500, text-xs font-medium). Apply the breathing animation class conditionally when `showExportBreath` is true. The animation class should apply the 'export-breathe' keyframe from index.css.",
+    "Step 6: Add the AlertTriangle import from lucide-react at the top of App.jsx if not already imported.",
+    "Step 7: Verify the build passes with npm run build."
+  ],
+  "acceptance_criteria": [
+    "npm run build succeeds without errors",
+    "The header contains a multi-tab warning that is only visible when isMultiTab state is true",
+    "The header contains an always-visible export reminder with text 'Don't forget to export'",
+    "The export reminder has a CSS breathing animation that triggers every 5 minutes",
+    "The breathing animation is gentle (opacity transition only, no flashing/pulsing/shaking)",
+    "A BroadcastChannel (or localStorage fallback) is used for multi-tab detection",
+    "The multi-tab warning shows a tooltip on hover with the full explanation text",
+    "ReminderPanel.jsx is NOT modified",
+    "The existing reminder/notification system is not altered in any way"
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits with code 0",
+    "Confirm ReminderPanel.jsx has no changes (git diff src/ReminderPanel.jsx should be empty)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
