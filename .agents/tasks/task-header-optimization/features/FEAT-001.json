@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Redesign the Task Manager header into a compact single-row toolbar that keeps all controls (search, Active/All toggle, status filters, New Group, New Task) on one line without wrapping, maximizing vertical space for task visibility.",
+  "status": "completed",
+  "steps": [
+    "Remove the 'Task Manager' text label and flex-wrap from the toolbar container to prevent multi-row wrapping",
+    "Resize the search box to ~180-220px fixed width, remove flex-1/max-w-xs behavior",
+    "Keep Active/All toggle compact as-is",
+    "Keep status filter pills compact as-is",
+    "Replace the group creation inline input with a single compact 'New Group' button that triggers the group creation form elsewhere or uses a simple prompt",
+    "Keep 'New Task' button compact",
+    "Ensure everything fits within ~720px single row without wrapping"
+  ],
+  "acceptance_criteria": [
+    "The toolbar renders on a single row without wrapping at 720px+ width",
+    "Search box is always visible and functional",
+    "Active/All toggle is visible and functional",
+    "Status filter pills (Todo, In Progress, Waiting, Completed) are visible and functional",
+    "New Group action is accessible",
+    "New Task button is visible and functional",
+    "Close button remains accessible",
+    "Header height is reduced compared to the previous multi-row layout",
+    "npm run build succeeds without errors"
+  ],
+  "verification": [
+    "Run npm run build in /projects/sandbox/Clear-mind and confirm exit code 0"
+  ],
+  "blocked_reason": null,
+  "findings": "Build succeeds. Replaced inline group-name input with prompt()-based button to save ~130px horizontal space. Reduced all padding, gaps, font sizes, and icon sizes. Removed flex-wrap and the 'Task Manager' heading. The toolbar now renders everything in a single row without wrapping. Pre-existing chunk size warning (844KB) remains."
+}

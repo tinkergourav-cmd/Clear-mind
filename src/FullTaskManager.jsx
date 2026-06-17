@@ -285,46 +285,44 @@ export default function FullTaskManager({
 
   return (
     <div className={isPanel ? 'w-1/2 bg-white border-l border-slate-200 flex flex-col overflow-hidden shrink-0 h-full' : 'fixed inset-0 z-50 bg-white flex flex-col'}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0 flex-wrap">
-        <h2 className="text-sm font-bold text-slate-800 shrink-0">Task Manager</h2>
-
+      {/* Toolbar - compact single-row layout */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200 bg-slate-50 shrink-0">
         {/* Toggle Fullscreen */}
         {onToggleFullscreen && (
           <button
             onClick={onToggleFullscreen}
-            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0"
             title={mode === 'fullscreen' ? 'Restore Split View (TT)' : 'Expand Task Manager (TT)'}
           >
-            {mode === 'fullscreen' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {mode === 'fullscreen' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
         )}
 
         {/* Search */}
-        <div className={`flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 ${isPanel ? 'flex-1 min-w-0' : 'flex-1 max-w-xs'}`}>
-          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded px-2 py-1 w-[180px] shrink-0">
+          <Search className="w-3 h-3 text-slate-400 shrink-0" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tasks..."
-            className="flex-1 bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
+            placeholder="Search..."
+            className="flex-1 min-w-0 bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600">
+            <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 shrink-0">
               <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
         {/* View Mode Toggle (Active / All) */}
-        <div className="flex items-center bg-slate-200 rounded-lg p-0.5 shrink-0">
+        <div className="flex items-center bg-slate-200 rounded p-0.5 shrink-0">
           <button
             onClick={() => {
               setViewMode('active');
               if (activeFilter === 'completed') setActiveFilter('all');
             }}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+            className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
               viewMode === 'active'
                 ? 'bg-white text-indigo-700 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
@@ -334,7 +332,7 @@ export default function FullTaskManager({
           </button>
           <button
             onClick={() => setViewMode('all')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+            className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
               viewMode === 'all'
                 ? 'bg-white text-indigo-700 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
@@ -345,14 +343,14 @@ export default function FullTaskManager({
         </div>
 
         {/* Status Filters */}
-        <div className={`flex items-center gap-1 ${isPanel ? 'flex-wrap' : ''}`}>
+        <div className="flex items-center gap-0.5 shrink-0">
           {filterButtons
             .filter(fb => viewMode === 'all' || fb.value !== 'completed')
             .map(fb => (
             <button
               key={fb.value}
               onClick={() => setActiveFilter(fb.value)}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${
+              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded-full transition-colors whitespace-nowrap ${
                 activeFilter === fb.value
                   ? 'bg-indigo-100 text-indigo-700'
                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -363,43 +361,37 @@ export default function FullTaskManager({
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 ml-auto">
-          {/* Add Group */}
-          <div className="flex items-center gap-1">
-            <input
-              type="text"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="New group..."
-              className={`text-xs bg-white border border-slate-200 rounded px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-300 w-28`}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateGroup(); }}
-            />
-            <button
-              onClick={handleCreateGroup}
-              disabled={!newGroupName.trim()}
-              className="p-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 rounded transition-colors"
-              title="Add Group"
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          {/* New Group */}
+          <button
+            onClick={() => {
+              const name = prompt('New group name:');
+              if (name && name.trim()) onAddGroup(name.trim());
+            }}
+            className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-semibold rounded transition-colors"
+            title="New Group"
+          >
+            <FolderPlus className="w-3 h-3" />
+            <span className="hidden sm:inline">Group</span>
+          </button>
 
           {/* New Task */}
           <button
             onClick={() => setShowNewTaskForm(!showNewTaskForm)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors"
+            className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold rounded transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" />
-            New Task
+            <Plus className="w-3 h-3" />
+            Task
           </button>
 
           {/* Close */}
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+            className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors"
             title="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
