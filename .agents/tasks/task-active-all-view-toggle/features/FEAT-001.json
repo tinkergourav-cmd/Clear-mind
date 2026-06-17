@@ -23,5 +23,5 @@
     "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits with code 0 and no compilation errors."
   ],
   "blocked_reason": null,
-  "findings": "Build passes successfully. No test framework configured - verification limited to npm run build. The toggle uses a pill-style segmented control with bg-slate-200 background and white active state, positioned before the status filter pills. The Completed filter pill is hidden in active mode to avoid confusion."
+  "findings": "Build passes successfully. No test framework configured - verification limited to npm run build. The toggle uses a pill-style segmented control with bg-slate-200 background and white active state, positioned before the status filter pills. The Completed filter pill is hidden in active mode to avoid confusion. Post-review fix: reset activeFilter to 'all' when switching viewMode to 'active' while the Completed filter is selected, preventing an empty task list with no visible recovery path."
 }
