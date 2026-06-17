@@ -472,6 +472,7 @@ export default function WorkflowApp() {
 
   // --- Header Notification Indicators ---
   const [isMultiTab, setIsMultiTab] = useState(false);
+  const [showMultiTabTooltip, setShowMultiTabTooltip] = useState(false);
   const [showExportBreath, setShowExportBreath] = useState(false);
   const exportBreathTimerRef = useRef(null);
   const broadcastChannelRef = useRef(null);
@@ -964,6 +965,22 @@ export default function WorkflowApp() {
       heartbeatInterval = setInterval(() => {
         channel.postMessage({ type: 'presence' });
       }, 4000);
+
+      // Send leave on tab close (beforeunload) so sibling clears warning immediately
+      const handleBeforeUnload = () => {
+        channel.postMessage({ type: 'leave' });
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+
+      return () => {
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        if (tabTimeout) clearTimeout(tabTimeout);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        if (channel) {
+          channel.postMessage({ type: 'leave' });
+          channel.close();
+        }
+      };
     } catch (e) {
       // BroadcastChannel not supported, fallback to localStorage
       const storageKey = 'thoughtflow-tab-id';
@@ -1001,16 +1018,12 @@ export default function WorkflowApp() {
         window.removeEventListener('storage', handleStorage);
       };
     }
-
-    return () => {
-      if (heartbeatInterval) clearInterval(heartbeatInterval);
-      if (tabTimeout) clearTimeout(tabTimeout);
-      if (channel) {
-        channel.postMessage({ type: 'leave' });
-        channel.close();
-      }
-    };
   }, []);
+
+  // Close multi-tab tooltip when the warning clears
+  useEffect(() => {
+    if (!isMultiTab) setShowMultiTabTooltip(false);
+  }, [isMultiTab]);
 
   // --- Export Reminder Breathing Animation (every 5 minutes) ---
   const exportBreathTimeoutRef = useRef(null);
@@ -4558,12 +4571,24 @@ export default function WorkflowApp() {
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Multi-tab warning - conditional, icon-only on xs, full on sm+ */}
           {isMultiTab && (
-            <div
-              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg cursor-default"
-              title="This canvas is currently open in another tab or window. To reduce the risk of data conflicts, refresh before starting work and export your data before leaving. For best reliability, work in only a single tab at a time and keep just one tab open per device."
-            >
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="hidden sm:inline text-xs font-medium text-amber-700 whitespace-nowrap">Open in another tab</span>
+            <div className="relative">
+              <div
+                className="flex items-center gap-1.5 px-1.5 sm:px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer"
+                onClick={() => setShowMultiTabTooltip((prev) => !prev)}
+                onMouseEnter={() => setShowMultiTabTooltip(true)}
+                onMouseLeave={() => setShowMultiTabTooltip(false)}
+                role="button"
+                aria-label="Multi-tab warning. Tap for details."
+                aria-expanded={showMultiTabTooltip}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="hidden sm:inline text-xs font-medium text-amber-700 whitespace-nowrap">Open in another tab</span>
+              </div>
+              {showMultiTabTooltip && (
+                <div className="absolute top-full left-0 mt-1 z-50 w-64 sm:w-72 p-2.5 bg-white border border-amber-200 rounded-lg shadow-lg text-xs text-slate-700 leading-relaxed">
+                  This canvas is currently open in another tab or window. To reduce the risk of data conflicts, refresh before starting work and export your data before leaving. For best reliability, work in only a single tab at a time and keep just one tab open per device.
+                </div>
+              )}
             </div>
           )}
 
