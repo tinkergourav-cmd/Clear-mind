@@ -320,7 +320,10 @@ export default function FullTaskManager({
         {/* View Mode Toggle (Active / All) */}
         <div className="flex items-center bg-slate-200 rounded-lg p-0.5 shrink-0">
           <button
-            onClick={() => setViewMode('active')}
+            onClick={() => {
+              setViewMode('active');
+              if (activeFilter === 'completed') setActiveFilter('all');
+            }}
             className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
               viewMode === 'active'
                 ? 'bg-white text-indigo-700 shadow-sm'
