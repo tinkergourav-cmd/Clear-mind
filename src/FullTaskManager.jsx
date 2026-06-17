@@ -75,6 +75,7 @@ export default function FullTaskManager({
 }) {
   const isPanel = mode === 'panel';
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('active');
   const [activeFilter, setActiveFilter] = useState('all');
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [selectedTaskId, setSelectedTaskId] = useState(null);
@@ -238,6 +239,11 @@ export default function FullTaskManager({
       return task.title.toLowerCase().includes(q) || (task.notes || '').toLowerCase().includes(q);
     });
 
+    // Apply viewMode filter: in 'active' mode, exclude completed tasks
+    if (viewMode === 'active') {
+      filtered = filtered.filter(task => task.status !== 'completed');
+    }
+
     if (activeFilter !== 'all') {
       filtered = filtered.filter(task => task.status === activeFilter);
     }
@@ -255,8 +261,17 @@ export default function FullTaskManager({
       result[gId].push(task);
     });
 
+    // In 'all' mode, sort completed tasks to the bottom within each group
+    if (viewMode === 'all') {
+      Object.keys(result).forEach(gId => {
+        const incomplete = result[gId].filter(t => t.status !== 'completed');
+        const completed = result[gId].filter(t => t.status === 'completed');
+        result[gId] = [...incomplete, ...completed];
+      });
+    }
+
     return result;
-  }, [tasks, searchQuery, activeFilter, groups]);
+  }, [tasks, searchQuery, viewMode, activeFilter, groups]);
 
   const filterButtons = [
     { value: 'all', label: 'All' },
@@ -302,9 +317,35 @@ export default function FullTaskManager({
           )}
         </div>
 
+        {/* View Mode Toggle (Active / All) */}
+        <div className="flex items-center bg-slate-200 rounded-lg p-0.5 shrink-0">
+          <button
+            onClick={() => setViewMode('active')}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+              viewMode === 'active'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Active
+          </button>
+          <button
+            onClick={() => setViewMode('all')}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+              viewMode === 'all'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            All
+          </button>
+        </div>
+
         {/* Status Filters */}
         <div className={`flex items-center gap-1 ${isPanel ? 'flex-wrap' : ''}`}>
-          {filterButtons.map(fb => (
+          {filterButtons
+            .filter(fb => viewMode === 'all' || fb.value !== 'completed')
+            .map(fb => (
             <button
               key={fb.value}
               onClick={() => setActiveFilter(fb.value)}
@@ -555,7 +596,7 @@ export default function FullTaskManager({
                     <div
                       className={`flex items-center px-4 py-1.5 border-b border-slate-50 cursor-pointer transition-colors border-l-2 ${
                         isEditing ? `bg-slate-50 ${colorCfg.headerBorder}` : isSelected ? `bg-indigo-50/50 border-l-transparent` : `border-l-transparent hover:bg-slate-50`
-                      }`}
+                      } ${viewMode === 'all' && task.status === 'completed' ? 'opacity-50' : ''}`}
                       onClick={() => handleRowClick(task)}
                       onDoubleClick={() => handleRowDoubleClick(task)}
                     >
