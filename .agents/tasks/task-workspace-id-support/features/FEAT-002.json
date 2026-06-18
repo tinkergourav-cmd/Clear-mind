@@ -1,0 +1,65 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Add workspaceId to all workspace-level objects (nodes, edges, groups, pins) at creation time, in duplication flows, in import flows, and add a migration layer for existing data. Also add a duplicateWorkspace function that generates a new workspace ID and reassigns all contained objects.",
+  "status": "completed",
+  "steps": [
+    "STEP 1 - Update defaultWorkspaces constant (around line 201 in src/App.jsx): Add 'workspaceId: \"ws-1\"' to every node, group, and edge in the default data. Pins array is empty so no change needed there.",
+    
+    "STEP 2 - Update addNode function (line ~3298 in src/App.jsx): Add 'workspaceId: activeTab' to the newNode object being created. The newNode currently has: id, x, y, title, content, theme, groupId, cloneSourceId. Add workspaceId after id.",
+    
+    "STEP 3 - Update createGroup function (line ~3573 in src/App.jsx): Add 'workspaceId: activeTab' to the newGroup object. The newGroup currently has: id, name, x, y, width, height, theme, parentGroupId.",
+    
+    "STEP 4 - Update addPin function (line ~3340 in src/App.jsx): Add 'workspaceId: activeTab' to the newPin object. The newPin currently has: id, name, canvas_position_x, canvas_position_y, note, color, icon, visibility_status, created_date.",
+    
+    "STEP 5 - Update edge creation. Edges are created inline in several places. Search for pattern '{ id: `e-${Date.now()}`, source:' to find all edge creation points. Add 'workspaceId: activeTab' to each. Key locations: (a) connection creation around line 4929, (b) the 'L' key shortcut edge creation around line 1896-1920, (c) pasteGroup function edge creation around line 1447, (d) partial import edge creation around line 2690.",
+    
+    "STEP 6 - Update duplicateNode function (line ~3597 in src/App.jsx): Add 'workspaceId: activeTab' to the dup object.",
+    
+    "STEP 7 - Update pasteNode function (around line 1310): When creating newNode from clipboard data, add 'workspaceId: activeTab' to the pasted node.",
+    
+    "STEP 8 - Update pasteGroup function (around line 1390): When creating newGroups and newNodes from clipboard data, ensure workspaceId is set to activeTab for all pasted groups, nodes, and edges.",
+    
+    "STEP 9 - Update cloneNodeToWorkspace function (line ~3653): The cloned node should get 'workspaceId: targetWorkspaceId' (the target workspace it is cloned into).",
+    
+    "STEP 10 - Update addWorkspace function (line ~1961): The new workspace already creates empty arrays for nodes/edges/groups. No objects to stamp here, but the workspace object itself should confirm it has a stable id (it already uses `ws-${Date.now()}`).",
+    
+    "STEP 11 - Add a duplicateWorkspace function after the existing addWorkspace/deleteWorkspace/renameWorkspace block (around line ~1980). This function should: (a) Deep-clone the workspace being duplicated, (b) Generate a new workspace ID with `ws-${Date.now()}`, (c) Generate new IDs for all contained objects (nodes, groups, edges, pins) using the existing ID patterns, (d) Set workspaceId on ALL cloned objects to the new workspace ID, (e) Give the duplicated workspace a name like 'WorkspaceName (Copy)', (f) Add it to the workspaces array and switch to it.",
+    
+    "STEP 12 - Add a 'Duplicate' button/option to the workspace dropdown list (around line ~4789 where delete button exists for each workspace). Add a duplicate icon button next to the delete button that calls duplicateWorkspace(ws.id).",
+    
+    "STEP 13 - Update the import flow for workspace-level import (handleImport at line ~2479): When importing workspaces, ensure all objects in the imported workspaces have the correct workspaceId matching their parent workspace's id.",
+    
+    "STEP 14 - Update the importAllData function (line ~2509): After restoring projects from backup, ensure all workspace objects have correct workspaceId fields. This handles backward compatibility with old exports that lack workspaceId.",
+    
+    "STEP 15 - Update the partial import flow (handlePartialImportFile / confirmPartialImport, search for 'nexus-partial-export'): When importing partial data into the active workspace, stamp all imported nodes, edges, and groups with workspaceId = activeTab.",
+    
+    "STEP 16 - Add a migration function that runs during initialization (in the init() useEffect, around line ~697). After loading workspaces from storage, iterate through all workspace objects and stamp any objects missing workspaceId with their parent workspace's id. This ensures backward compatibility with existing saved data.",
+    
+    "STEP 17 - Update createProject function (line ~2040): The new project creates a workspace with empty arrays, so no stamping needed. But confirm the workspace id pattern is consistent.",
+    
+    "STEP 18 - Update duplicateProject function (line ~2249): When duplicating a project, all workspaces are deep-cloned. The workspace IDs should remain the same (since they are in a different project context), but if workspace IDs should be unique globally, generate new ones and update all workspaceId fields on contained objects. Since the user's requirements say workspace IDs should be unique (permanent unique identifier), generate new workspace IDs for duplicated projects and reassign all object workspaceIds.",
+    
+    "STEP 19 - Export functions (exportData at line ~2408, exportSelectedNodes at line ~2419, exportAllData at line ~2285, exportSingleProject at line ~2268): These serialize existing state to JSON. Since objects now have workspaceId, they will automatically be included in exports. No code changes needed, but verify they work correctly."
+  ],
+  "acceptance_criteria": [
+    "Every node created via addNode has a workspaceId field matching the active workspace tab id",
+    "Every group created via createGroup has a workspaceId field matching the active workspace tab id",
+    "Every pin created via addPin has a workspaceId field matching the active workspace tab id",
+    "Every edge created anywhere in the app has a workspaceId field matching the active workspace tab id",
+    "Duplicated nodes inherit the active workspace's id as their workspaceId",
+    "Pasted nodes/groups/edges get workspaceId = activeTab",
+    "Cloned nodes to another workspace get workspaceId = target workspace id",
+    "A duplicateWorkspace function exists that creates a new workspace with new IDs for all objects and correctly stamps workspaceId",
+    "A 'Duplicate' button appears in the workspace dropdown/sidebar for each workspace",
+    "Imported data gets workspaceId stamped correctly",
+    "Existing data without workspaceId is migrated on load",
+    "The defaultWorkspaces constant includes workspaceId on all objects",
+    "'npm run build' completes successfully with no compilation errors"
+  ],
+  "verification": [
+    "Run 'npm run build' in /projects/sandbox/Clear-mind and confirm it exits with code 0 and no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "All 19 steps implemented successfully. workspaceId added to: defaultWorkspaces constant, addNode, createGroup, addPin, all edge creation points (L key, connection ports on groups/nodes/images, selection menu connect), duplicateNode, cloneNode, pasteNode, pasteGroup, cloneNodeToWorkspace (uses targetWorkspaceId), selection menu bulk duplicate. duplicateWorkspace function added with full ID remapping. Duplicate button added to workspace sidebar. Migration layer added at init(), project switch, and project delete. Import flows (handleImport, importAllData, executePartialImport) stamp workspaceId. duplicateProject generates new workspace IDs. Build passes with no errors."
+}

@@ -1,0 +1,24 @@
+{
+  "project_type": "React SPA with Vite, Firebase (Firestore), TailwindCSS",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite 6 with npm",
+  "test_framework": "None (no test files found)",
+  "build_command": "npm run build",
+  "test_command": "npm run build (no tests, use build as verification)",
+  "verification_instructions": "Run 'npm run build' to ensure compilation succeeds with no errors.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "No test framework. Build verification is the primary check. Firebase is already configured with real credentials in src/firebase.js.",
+  "contribution_requirements": "No CONTRIBUTING.md exists. Follow existing code patterns in App.jsx.",
+  "key_patterns": "Single monolithic App.jsx (6374 lines) contains most logic. Workspace state is an array of workspace objects, each containing nodes/edges/groups/pins arrays. State is managed via useState hooks. Workspaces have IDs like 'ws-${Date.now()}'. Objects (nodes, groups, edges, pins) are created inline in callback functions. Auto-save to localStorage + Firestore (fire-and-forget). Projects system wraps workspaces. defaultWorkspaces constant provides initial data.",
+  "relevant_files": [
+    "src/App.jsx - main component, all workspace/object creation/duplication/deletion logic",
+    "src/firebaseService.js - saves/loads projects to Firestore as JSON blob",
+    "src/firebase.js - Firebase config and initialization",
+    "src/PinPanel.jsx - Pin management panel (reads pins from workspace objects)",
+    "src/FullTaskManager.jsx - Task manager (tasks are project-level, not workspace-level)",
+    "src/MiniMap.jsx - renders minimap from workspace nodes/groups/pins",
+    "src/CardEditorPanel.jsx - card editor panel"
+  ],
+  "directory_structure": "Flat src/ directory with App.jsx as the monolith. Supporting components: MiniMap, PinPanel, ReminderPanel, FullTaskManager, MarkdownRenderer, CardEditorPanel. Config files at root level."
+}

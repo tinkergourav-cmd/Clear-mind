@@ -1,0 +1,7 @@
+{
+  "task_id": "task-workspace-id-support",
+  "task_description": "Add Workspace ID support across the application. Every object (node, edge, group, pin) created within a workspace should store the workspaceId of its parent workspace. This establishes clear ownership relationships, supports workspace duplication with proper ID reassignment, and ensures import/export preserves these relationships. Includes a migration layer for backward compatibility with existing data.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
