@@ -341,6 +341,18 @@ const MARKDOWN_ZOOM_THRESHOLD = 0.6;
 const MAX_CARD_WIDTH = 600;
 const MAX_CARD_HEIGHT = 800;
 
+// Helper: stamp workspaceId on all objects in workspaces that are missing it
+function migrateWorkspaceIds(workspaces) {
+  return workspaces.map(ws => ({
+    ...ws,
+    nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
+    edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
+    groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
+    pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id }),
+    images: (ws.images || []).map(img => img.workspaceId ? img : { ...img, workspaceId: ws.id })
+  }));
+}
+
 export default function WorkflowApp() {
   // --- Core State ---
   const [workspaces, setWorkspaces] = useState([]);
@@ -766,13 +778,7 @@ export default function WorkflowApp() {
             });
 
             // Migrate: stamp workspaceId on any objects missing it
-            initialWorkspaces = initialWorkspaces.map(ws => ({
-              ...ws,
-              nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
-              edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
-              groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
-              pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id })
-            }));
+            initialWorkspaces = migrateWorkspaceIds(initialWorkspaces);
             
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
@@ -2051,7 +2057,8 @@ export default function WorkflowApp() {
 
     const newImages = (source.images || []).map(img => ({
       ...img,
-      id: `img-${Date.now()}-${idCounter++}`
+      id: `img-${Date.now()}-${idCounter++}`,
+      workspaceId: newWsId
     }));
 
     const newWorkspace = {
@@ -2181,13 +2188,7 @@ export default function WorkflowApp() {
       return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
     });
     // Migrate: stamp workspaceId on any objects missing it
-    targetWorkspaces = targetWorkspaces.map(ws => ({
-      ...ws,
-      nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
-      edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
-      groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
-      pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id })
-    }));
+    targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
@@ -2245,13 +2246,7 @@ export default function WorkflowApp() {
       return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
     });
     // Migrate: stamp workspaceId on any objects missing it
-    targetWorkspaces = targetWorkspaces.map(ws => ({
-      ...ws,
-      nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
-      edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
-      groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
-      pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id })
-    }));
+    targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
     const isDefault = target.id === defaultProjectId;
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
@@ -2474,13 +2469,7 @@ export default function WorkflowApp() {
         return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
       });
       // Migrate: stamp workspaceId on any objects missing it
-      nextWorkspaces = nextWorkspaces.map(ws => ({
-        ...ws,
-        nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
-        edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
-        groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
-        pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id })
-      }));
+      nextWorkspaces = migrateWorkspaceIds(nextWorkspaces);
       setWorkspaces(nextWorkspaces);
       setActiveTab(next.activeTab || (nextWorkspaces.length > 0 ? nextWorkspaces[0].id : ''));
       setNextId(next.nextId || 10);
@@ -2622,7 +2611,8 @@ export default function WorkflowApp() {
             nodes: (ws.nodes || []).map(n => ({ ...n, workspaceId: ws.id })),
             edges: (ws.edges || []).map(e => ({ ...e, workspaceId: ws.id })),
             groups: (ws.groups || []).map(g => ({ ...g, workspaceId: ws.id })),
-            pins: (ws.pins || []).map(p => ({ ...p, workspaceId: ws.id }))
+            pins: (ws.pins || []).map(p => ({ ...p, workspaceId: ws.id })),
+            images: (ws.images || []).map(img => ({ ...img, workspaceId: ws.id }))
           }));
           setWorkspaces(migratedWorkspaces);
           setActiveTab(importedData.activeTab || migratedWorkspaces[0]?.id || '');
@@ -2677,13 +2667,7 @@ export default function WorkflowApp() {
             // Migrate workspaceId on all objects in all projects
             const migratedProjects = restoredProjects.map(proj => ({
               ...proj,
-              workspaces: (proj.workspaces || []).map(ws => ({
-                ...ws,
-                nodes: (ws.nodes || []).map(n => ({ ...n, workspaceId: n.workspaceId || ws.id })),
-                edges: (ws.edges || []).map(e => ({ ...e, workspaceId: e.workspaceId || ws.id })),
-                groups: (ws.groups || []).map(g => ({ ...g, workspaceId: g.workspaceId || ws.id })),
-                pins: (ws.pins || []).map(p => ({ ...p, workspaceId: p.workspaceId || ws.id }))
-              }))
+              workspaces: migrateWorkspaceIds(proj.workspaces || [])
             }));
             setProjects(migratedProjects);
             setDefaultProjectId(restoredDefault);
@@ -3430,7 +3414,8 @@ export default function WorkflowApp() {
             width: displayWidth,
             height: displayHeight,
             src: compressedBase64,
-            groupId: imageGroupId
+            groupId: imageGroupId,
+            workspaceId: activeTab
           }]
         }));
       };
@@ -6333,7 +6318,7 @@ export default function WorkflowApp() {
               <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); const filteredGroups = ws.groups.filter(g => !selectedNodeIds.includes(g.id)); const filteredImages = (ws.images || []).filter(img => !selectedNodeIds.includes(img.id)); const filteredEdges = ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)); return { nodes: filtered, edges: filteredEdges, groups: computeLayout(filteredGroups, filtered), images: filteredImages }; }); setSelectedNodeIds([]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left">
                 <Trash2 className="w-4 h-4" /> Delete
               </button>
-              <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null, workspaceId: activeTab }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target, workspaceId: activeTab })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40 })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors w-full text-left">
+              <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null, workspaceId: activeTab }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target, workspaceId: activeTab })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40, workspaceId: activeTab })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors w-full text-left">
                 <Copy className="w-4 h-4" /> Duplicate
               </button>
               <button onClick={() => { exportSelectedNodes(selectedNodeIds); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors w-full text-left" id="export-selected-btn">
