@@ -19,6 +19,7 @@ import MarkdownRenderer from './MarkdownRenderer';
 import CardEditorPanel from './CardEditorPanel';
 import { saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject } from './firebaseService';
 import { isFirebaseConfigured } from './firebase';
+import { validateWorkspaces } from './workspaceValidator';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -779,6 +780,7 @@ export default function WorkflowApp() {
 
             // Migrate: stamp workspaceId on any objects missing it
             initialWorkspaces = migrateWorkspaceIds(initialWorkspaces);
+            if (import.meta.env.DEV) validateWorkspaces(initialWorkspaces, 'after init migration');
             
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
@@ -2189,6 +2191,7 @@ export default function WorkflowApp() {
     });
     // Migrate: stamp workspaceId on any objects missing it
     targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project switch');
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
@@ -2247,6 +2250,7 @@ export default function WorkflowApp() {
     });
     // Migrate: stamp workspaceId on any objects missing it
     targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project delete/switch');
     const isDefault = target.id === defaultProjectId;
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
@@ -2471,6 +2475,7 @@ export default function WorkflowApp() {
       });
       // Migrate: stamp workspaceId on any objects missing it
       nextWorkspaces = migrateWorkspaceIds(nextWorkspaces);
+      if (import.meta.env.DEV) validateWorkspaces(nextWorkspaces, 'after project open');
       setWorkspaces(nextWorkspaces);
       setActiveTab(next.activeTab || (nextWorkspaces.length > 0 ? nextWorkspaces[0].id : ''));
       setNextId(next.nextId || 10);
@@ -2526,6 +2531,7 @@ export default function WorkflowApp() {
 
   // --- Import / Export ---
   const exportData = () => {
+    if (import.meta.env.DEV) validateWorkspaces(workspaces, 'before exportData');
     const data = { workspaces, activeTab, nextId, tasks, taskGroups };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2616,6 +2622,7 @@ export default function WorkflowApp() {
             images: (ws.images || []).map(img => ({ ...img, workspaceId: ws.id }))
           }));
           setWorkspaces(migratedWorkspaces);
+          if (import.meta.env.DEV) validateWorkspaces(migratedWorkspaces, 'after handleImport');
           setActiveTab(importedData.activeTab || migratedWorkspaces[0]?.id || '');
           setNextId(importedData.nextId || 10);
           if (importedData.tasks) setTasks(normalizeTasks(importedData.tasks));
@@ -2670,6 +2677,9 @@ export default function WorkflowApp() {
               ...proj,
               workspaces: migrateWorkspaceIds(proj.workspaces || [])
             }));
+            if (import.meta.env.DEV) {
+              migratedProjects.forEach(proj => validateWorkspaces(proj.workspaces || [], `after importAllData [project: ${proj.id}]`));
+            }
             setProjects(migratedProjects);
             setDefaultProjectId(restoredDefault);
             setActiveProjectId(restoredDefault);
