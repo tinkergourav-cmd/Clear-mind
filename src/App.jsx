@@ -1991,6 +1991,20 @@ export default function WorkflowApp() {
     e.stopPropagation();
     if (workspaces.length <= 1) return;
     takeSnapshot();
+
+    // Convert tasks linked to pins in this workspace to unassigned
+    const wsToDelete = workspaces.find(w => w.id === id);
+    if (wsToDelete) {
+      const pinIdsInWorkspace = new Set((wsToDelete.pins || []).map(p => p.id));
+      if (pinIdsInWorkspace.size > 0) {
+        setTasks(prev => prev.map(t =>
+          t.locationPinId && pinIdsInWorkspace.has(t.locationPinId)
+            ? { ...t, locationPinId: undefined, locationWorkspaceId: undefined }
+            : t
+        ));
+      }
+    }
+
     setWorkspaces(prev => prev.filter(w => w.id !== id));
     if (activeTab === id) setActiveTab(workspaces.find(w => w.id !== id).id);
   };
@@ -2077,6 +2091,24 @@ export default function WorkflowApp() {
     setActiveTab(newWsId);
     setNextId(idCounter);
     setTransform({ x: 0, y: 0, scale: 1 });
+
+    // Duplicate tasks linked to pins in the source workspace
+    if (Object.keys(pinIdMap).length > 0) {
+      setTasks(prev => {
+        const newTasks = [];
+        for (const task of prev) {
+          if (task.locationPinId && pinIdMap[task.locationPinId]) {
+            newTasks.push({
+              ...task,
+              id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              locationPinId: pinIdMap[task.locationPinId],
+              locationWorkspaceId: newWsId,
+            });
+          }
+        }
+        return newTasks.length > 0 ? [...prev, ...newTasks] : prev;
+      });
+    }
   };
 
   // --- Project Management Functions ---
@@ -3002,6 +3034,7 @@ export default function WorkflowApp() {
         icon: '\ud83c\udfaf',
         visibility_status: true,
         created_date: new Date().toISOString(),
+        workspaceId: activeTab,
       };
       updateActiveWorkspace(ws => ({
         pins: [...(ws.pins || []), newPin],

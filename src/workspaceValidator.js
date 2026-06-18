@@ -5,19 +5,22 @@
  * 1. Every node, group, pin, image, and edge has a valid workspaceId.
  * 2. Every edge source and target reference an existing object (node, group, or image).
  * 3. No object references a workspace that does not exist.
+ * 4. (Optional) Task locationPinId references an existing pin, and locationWorkspaceId references an existing workspace.
  *
  * Usage:
  *   import { validateWorkspaces } from './workspaceValidator';
  *   if (import.meta.env.DEV) validateWorkspaces(workspaces, 'after import');
+ *   if (import.meta.env.DEV) validateWorkspaces(workspaces, 'after import', tasks);
  */
 
 /**
  * Validate workspace data integrity.
  * @param {Array} workspaces - The array of workspace objects to validate.
  * @param {string} [context=''] - A label describing when validation is running (e.g., 'after import').
+ * @param {Array} [tasks] - Optional array of tasks to validate task-pin-workspace integrity.
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
-export function validateWorkspaces(workspaces, context = '') {
+export function validateWorkspaces(workspaces, context = '', tasks) {
   const prefix = context ? `[WorkspaceValidator: ${context}]` : '[WorkspaceValidator]';
   const errors = [];
   const warnings = [];
@@ -146,6 +149,35 @@ export function validateWorkspaces(workspaces, context = '') {
       // Validate edge target references an existing object
       if (edge.target && !objectIds.has(edge.target)) {
         const msg = `${prefix} Edge "${edge.id}" in ${wsLabel} has target "${edge.target}" that does not reference any existing node, group, or image`;
+        errors.push(msg);
+        console.error(msg);
+      }
+    }
+  }
+
+  // Validate task-pin-workspace integrity (if tasks provided)
+  if (Array.isArray(tasks)) {
+    // Collect all pin IDs across all workspaces
+    const allPinIds = new Set();
+    for (const ws of workspaces) {
+      for (const pin of (ws.pins || [])) {
+        allPinIds.add(pin.id);
+      }
+    }
+
+    for (const task of tasks) {
+      if (!task || !task.id) continue;
+
+      // Validate locationPinId references an existing pin
+      if (task.locationPinId && !allPinIds.has(task.locationPinId)) {
+        const msg = `${prefix} Task "${task.id}" has locationPinId "${task.locationPinId}" that does not reference any existing pin`;
+        errors.push(msg);
+        console.error(msg);
+      }
+
+      // Validate locationWorkspaceId references an existing workspace
+      if (task.locationWorkspaceId && !workspaceIds.has(task.locationWorkspaceId)) {
+        const msg = `${prefix} Task "${task.id}" has locationWorkspaceId "${task.locationWorkspaceId}" that does not reference any existing workspace`;
         errors.push(msg);
         console.error(msg);
       }
