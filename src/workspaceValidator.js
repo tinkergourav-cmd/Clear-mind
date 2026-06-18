@@ -159,9 +159,12 @@ export function validateWorkspaces(workspaces, context = '', tasks) {
   if (Array.isArray(tasks)) {
     // Collect all pin IDs across all workspaces
     const allPinIds = new Set();
+    // Map from pinId to the workspace it belongs to
+    const pinToWorkspaceId = new Map();
     for (const ws of workspaces) {
       for (const pin of (ws.pins || [])) {
         allPinIds.add(pin.id);
+        pinToWorkspaceId.set(pin.id, ws.id);
       }
     }
 
@@ -180,6 +183,16 @@ export function validateWorkspaces(workspaces, context = '', tasks) {
         const msg = `${prefix} Task "${task.id}" has locationWorkspaceId "${task.locationWorkspaceId}" that does not reference any existing workspace`;
         errors.push(msg);
         console.error(msg);
+      }
+
+      // Validate that the referenced pin actually lives in the referenced workspace
+      if (task.locationPinId && task.locationWorkspaceId && allPinIds.has(task.locationPinId) && workspaceIds.has(task.locationWorkspaceId)) {
+        const actualWorkspaceId = pinToWorkspaceId.get(task.locationPinId);
+        if (actualWorkspaceId !== task.locationWorkspaceId) {
+          const msg = `${prefix} Task "${task.id}" has locationPinId "${task.locationPinId}" that exists in workspace "${actualWorkspaceId}" but locationWorkspaceId points to "${task.locationWorkspaceId}"`;
+          errors.push(msg);
+          console.error(msg);
+        }
       }
     }
   }

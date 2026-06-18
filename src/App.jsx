@@ -780,7 +780,7 @@ export default function WorkflowApp() {
 
             // Migrate: stamp workspaceId on any objects missing it
             initialWorkspaces = migrateWorkspaceIds(initialWorkspaces);
-            if (import.meta.env.DEV) validateWorkspaces(initialWorkspaces, 'after init migration');
+            if (import.meta.env.DEV) validateWorkspaces(initialWorkspaces, 'after init migration', activeProj.tasks || []);
             
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
@@ -2223,7 +2223,7 @@ export default function WorkflowApp() {
     });
     // Migrate: stamp workspaceId on any objects missing it
     targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
-    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project switch');
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project switch', normalizeTasks(target.tasks || []));
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
@@ -2282,7 +2282,7 @@ export default function WorkflowApp() {
     });
     // Migrate: stamp workspaceId on any objects missing it
     targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
-    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project delete/switch');
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project delete/switch', normalizeTasks(target.tasks || []));
     const isDefault = target.id === defaultProjectId;
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
@@ -2507,7 +2507,7 @@ export default function WorkflowApp() {
       });
       // Migrate: stamp workspaceId on any objects missing it
       nextWorkspaces = migrateWorkspaceIds(nextWorkspaces);
-      if (import.meta.env.DEV) validateWorkspaces(nextWorkspaces, 'after project open');
+      if (import.meta.env.DEV) validateWorkspaces(nextWorkspaces, 'after project open', next.tasks || []);
       setWorkspaces(nextWorkspaces);
       setActiveTab(next.activeTab || (nextWorkspaces.length > 0 ? nextWorkspaces[0].id : ''));
       setNextId(next.nextId || 10);
@@ -2563,7 +2563,7 @@ export default function WorkflowApp() {
 
   // --- Import / Export ---
   const exportData = () => {
-    if (import.meta.env.DEV) validateWorkspaces(workspaces, 'before exportData');
+    if (import.meta.env.DEV) validateWorkspaces(workspaces, 'before exportData', tasks);
     const data = { workspaces, activeTab, nextId, tasks, taskGroups };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -3549,6 +3549,12 @@ export default function WorkflowApp() {
 
   const deletePin = (pinId, workspaceId) => {
     const targetId = workspaceId || activeTab;
+    // Clear locationPinId/locationWorkspaceId on any task referencing this pin
+    setTasks(prev => prev.map(t =>
+      t.locationPinId === pinId
+        ? { ...t, locationPinId: undefined, locationWorkspaceId: undefined }
+        : t
+    ));
     setWorkspaces(prev => prev.map(ws => ws.id === targetId ? { ...ws, pins: (ws.pins || []).filter(p => p.id !== pinId) } : ws));
     if (editingPinOnCanvas === pinId) setEditingPinOnCanvas(null);
     if (focusedPinId === pinId) setFocusedPinId(null);
