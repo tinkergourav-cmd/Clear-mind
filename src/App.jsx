@@ -2361,7 +2361,8 @@ export default function WorkflowApp() {
         nodes: (ws.nodes || []).map(n => ({ ...n, workspaceId: newWsId })),
         edges: (ws.edges || []).map(e => ({ ...e, workspaceId: newWsId })),
         groups: (ws.groups || []).map(g => ({ ...g, workspaceId: newWsId })),
-        pins: (ws.pins || []).map(p => ({ ...p, workspaceId: newWsId }))
+        pins: (ws.pins || []).map(p => ({ ...p, workspaceId: newWsId })),
+        images: (ws.images || []).map(img => ({ ...img, workspaceId: newWsId }))
       };
     });
     const newProj = {
