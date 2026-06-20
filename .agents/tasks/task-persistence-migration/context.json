@@ -1,0 +1,21 @@
+{
+  "project_type": "React SPA with Vite bundler, Firebase Firestore backend",
+  "language": "JavaScript (JSX)",
+  "build_system": "Vite via npm scripts",
+  "test_framework": "None - no test infrastructure exists",
+  "build_command": "npm run build",
+  "test_command": "npm run build (build verification only, no test suite)",
+  "verification_instructions": "Run `npm run build` in /projects/sandbox/Clear-mind. The build must succeed without errors. Warnings about chunk size are pre-existing and acceptable.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd /projects/sandbox/Clear-mind && npm install",
+  "environment_constraints": "OPEN_INTERNET network mode. Node v22 available. No test framework - build is the only verification. No Docker setup.",
+  "contribution_requirements": "No CONTRIBUTING.md. Keep existing export format backward-compatible (v1 imports must work). workspaceValidator.js must continue to function. Images stay as Base64.",
+  "key_patterns": "All app state is in one monolithic App.jsx (6571 lines). Projects array stored entirely in memory. IDs use Date.now() pattern (e.g., `proj-${Date.now()}`, `ws-${Date.now()}`). Single debounced autosave writes entire projects blob to localStorage key 'nexus-app-state' and Firestore appData/main document. Firebase service uses guardedSave() write-race queue. Project switching saves current state then loads target from in-memory projects array. Import/export uses JSON files with type markers ('thoughtflow-backup', 'nexus-full-backup', 'nexus-partial-export').",
+  "relevant_files": [
+    "src/App.jsx (lines 656-900: initialization/load; lines 1060-1130: autosave useEffects; lines 2146-2190: createProject; lines 2190-2250: switchProject; lines 2255-2310: cycleToProject; lines 2437-2465: exportAllData; lines 2675-2750: importAllData; lines 2749-2850: handlePartialImportFile)",
+    "src/firebaseService.js (entire file - guardedSave, saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject)",
+    "src/firebase.js (Firebase config and initialization)",
+    "src/workspaceValidator.js (validateWorkspaces function - must remain functional)"
+  ],
+  "directory_structure": "Root: index.html, package.json, vite.config.js, tailwind.config.js, postcss.config.js. src/: App.jsx (monolithic), firebase.js, firebaseService.js, workspaceValidator.js, CardEditorPanel.jsx, FullTaskManager.jsx, MarkdownRenderer.jsx, MiniMap.jsx, PinPanel.jsx, ReminderPanel.jsx, taskConstants.js, main.jsx, index.css. public/: vite.svg."
+}

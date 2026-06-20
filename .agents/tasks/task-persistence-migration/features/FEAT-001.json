@@ -1,0 +1,37 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create the new persistence service module (src/persistenceService.js) that implements the per-workspace localStorage schema, migration logic from old blob format, and new Firestore subcollection-based read/write functions. This is the core module that all subsequent wiring in App.jsx will depend on.",
+  "status": "completed",
+  "steps": [
+    "1. Run `npm install` in /projects/sandbox/Clear-mind to ensure node_modules are present.",
+    "2. Create src/persistenceService.js with the following sections:",
+    "  2a. CONSTANTS: Define new localStorage key patterns: 'cm-meta' (activeProjectId, defaultProjectId, schemaVersion: 2), 'cm-proj-{projectId}' (project metadata), 'cm-ws-{projectId}-{workspaceId}' (workspace data per workspace), 'cm-tasks-{projectId}' (tasks + taskGroups), 'cm-migration-status' (status, startedAt, completedAt).",
+    "  2b. ID GENERATION: Export a generateId() utility using crypto.randomUUID() (available in all modern browsers and Node 19+). Add a fallback for older browsers using Math.random(). Document that this replaces Date.now()-based IDs for new entities going forward, but existing IDs are preserved during migration.",
+    "  2c. MIGRATION DETECTION: Export detectMigrationNeeded() that checks: (a) 'nexus-app-state' exists in localStorage, (b) 'cm-migration-status' is absent or has status !== 'completed'. Returns { needed: boolean, reason: string }.",
+    "  2d. MIGRATION EXECUTION: Export migrateFromBlobToPerWorkspace() that: (1) Reads 'nexus-app-state' JSON blob, (2) Sets cm-migration-status to { status: 'in-progress', startedAt: Date.now() }, (3) For each project: writes cm-proj-{id} with metadata (name, description, password, thumbnail, lastModified, activeTab, nextId, reminders, workspaceIds, schemaVersion: 2), (4) For each workspace in each project: writes cm-ws-{projectId}-{workspaceId} with { name, nodes, edges, groups, pins, images, lastModified }, (5) Writes cm-tasks-{projectId} with { tasks, taskGroups }, (6) Writes cm-meta with { activeProjectId from 'nexus-active-project', defaultProjectId from 'nexus-default-project', schemaVersion: 2 }, (7) Sets cm-migration-status to { status: 'completed', startedAt, completedAt: Date.now() }, (8) Does NOT delete 'nexus-app-state' (kept for 7-day rollback). Make it idempotent - if interrupted, re-detect and retry on next load. Add try/catch per-workspace write so one failure does not block entire migration. Document localStorage size validation: log warning if total estimated size exceeds 4MB.",
+    "  2e. ROLLBACK: Export rollbackMigration() that clears all cm-* keys and resets cm-migration-status, allowing the app to fall back to nexus-app-state on next load.",
+    "  2f. LOCALSTORAGE READ/WRITE API: Export functions: loadMeta(), saveMeta(meta), loadProjectMeta(projectId), saveProjectMeta(projectId, data), loadWorkspace(projectId, workspaceId), saveWorkspace(projectId, workspaceId, data), loadTasks(projectId), saveTasks(projectId, data), loadAllProjectIds() (scans localStorage for cm-proj-* keys).",
+    "  2g. FIRESTORE SUBCOLLECTION API: Export functions that use firebase/firestore (collection, doc, setDoc, getDoc, getDocs, deleteDoc): saveProjectToFirestore(projectId, metadata), loadProjectFromFirestore(projectId), saveWorkspaceToFirestore(projectId, workspaceId, data), loadWorkspaceFromFirestore(projectId, workspaceId), loadAllWorkspacesFromFirestore(projectId), saveTasksToFirestore(projectId, data), loadTasksFromFirestore(projectId), saveUserMeta(meta), loadUserMeta(). Structure: collection 'projects' -> doc {projectId} (metadata) -> subcollection 'workspaces' -> doc {workspaceId}; collection 'projects' -> doc {projectId} -> subcollection 'tasks' -> doc 'taskData'; collection 'userMeta' -> doc 'main'. Each Firestore function must gracefully handle firebase not configured (return null/false). Use guardedSave pattern for writes (import from firebaseService or duplicate the pattern). Include cost documentation as JSDoc comments: document reads/writes for startup (1 userMeta read + 1 project read + N workspace reads where N = workspaceIds.length + 1 tasks read), project switch (1 project read + N workspace reads + 1 tasks read), workspace switch (0 reads - already loaded), autosave workspace (1 write), autosave tasks (1 write), autosave metadata (1 write).",
+    "  2h. INITIALIZATION: Export initializePersistence() async function that orchestrates the full load sequence: (1) Check migration status, (2) If migration needed, run migrateFromBlobToPerWorkspace(), (3) Try loading from Firestore first (userMeta, then project metadata, then workspaces for the active project, then tasks), (4) Fall back to localStorage cm-* keys if Firestore fails/unavailable, (5) Fall back to nexus-app-state blob as final fallback (backward compat), (6) Return { projects: Map<id, metadata>, activeWorkspaces: Map<workspaceId, data>, tasks, taskGroups, activeProjectId, defaultProjectId, source: 'firestore'|'localStorage'|'legacy' }. Document memory strategy: only the active project's workspaces are loaded into memory. Add a comment noting that for projects with 50+ workspaces, consider implementing LRU eviction in a future iteration.",
+    "  2i. DEBOUNCED SAVE HELPERS: Export createDebouncedSaver(delayMs) factory that returns a function accepting a save callback. Used by App.jsx to create 3 independent debounce timers: workspace (300ms), tasks (500ms), metadata (200ms). The factory should use clearTimeout/setTimeout pattern similar to existing saveTimerRef logic.",
+    "3. Ensure all exports are named exports (no default export) for tree-shaking.",
+    "4. Run `npm run build` to verify the new module compiles without errors."
+  ],
+  "acceptance_criteria": [
+    "src/persistenceService.js exists and exports all specified functions",
+    "The module imports from firebase/firestore (collection, doc, setDoc, getDoc, getDocs) and from ./firebase (db, isFirebaseConfigured)",
+    "generateId() returns valid UUID-like strings",
+    "detectMigrationNeeded() correctly identifies old format presence",
+    "migrateFromBlobToPerWorkspace() decomposes a projects array blob into per-workspace keys without data loss",
+    "All Firestore functions target correct collection paths (projects/{id}, projects/{id}/workspaces/{wsId}, projects/{id}/tasks/taskData, userMeta/main)",
+    "Firebase cost expectations are documented as JSDoc comments",
+    "createDebouncedSaver(ms) returns a working debounce function",
+    "`npm run build` succeeds without errors"
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits 0 with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "Build succeeds cleanly. The deleteDoc import is included for future use by rollback/cleanup operations but not directly invoked in current functions. The chunk size warning in build output is pre-existing and acceptable."
+}

@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-003",
+  "type": "chore",
+  "description": "Update firebaseService.js to export legacy functions as deprecated wrappers (or remove them if no longer referenced), and clean up any unused imports in App.jsx. Ensure the old firebaseService guardedSave pattern is either reused by persistenceService or the module is cleanly separated. Final build verification.",
+  "status": "completed",
+  "steps": [
+    "1. Check if src/firebaseService.js functions (saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject) are still imported or referenced anywhere in App.jsx after FEAT-002 changes. If not, remove the imports from App.jsx.",
+    "2. If firebaseService.js is no longer imported by any file, either: (a) Delete the file, or (b) Add a deprecation comment at the top and export the old functions as thin wrappers around the new persistenceService Firestore functions for any external consumers.",
+    "3. Ensure persistenceService.js has its own guardedSave implementation (or imports the pattern) so it does not depend on the old firebaseService module.",
+    "4. Remove any unused imports from App.jsx (lucide-react icons that were removed, old firebase service imports, etc.).",
+    "5. Verify that src/firebase.js (config + initialization) is still imported by persistenceService.js and working correctly.",
+    "6. Add a brief comment block at the top of persistenceService.js documenting the migration lifecycle: detection -> execution -> verification -> completion, and the 7-day rollback window for nexus-app-state.",
+    "7. Run `npm run build` to confirm final clean build."
+  ],
+  "acceptance_criteria": [
+    "No unused imports remain in App.jsx",
+    "firebaseService.js is either removed or clearly marked as deprecated with no active consumers",
+    "persistenceService.js is self-contained (does not depend on firebaseService.js)",
+    "persistenceService.js has a documentation block explaining the migration lifecycle",
+    "Build succeeds: `npm run build` exits 0"
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits 0 with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "All acceptance criteria met. firebaseService.js deleted - its functions were migrated as deprecated legacy wrappers in persistenceService.js. No unused icon imports found in App.jsx (all lucide-react icons are actively used in the UI). Build passes cleanly. persistenceService.js is self-contained with its own guardedFirestoreSave. Migration lifecycle documentation added at the top of the file. V2 review fixes applied: saveMeta/saveUserMeta moved inside debounced closure; only changed workspaces are saved via prevWorkspacesRef; deleteProjectFromFirestore added and wired into deleteProject; stale closure risk documented with comment."
+}
