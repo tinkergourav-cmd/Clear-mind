@@ -1,0 +1,26 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Add a lightweight development-only validation utility that verifies workspace data integrity: all objects have valid workspaceId, all edge source/target references exist, and no object references a non-existent workspace.",
+  "status": "completed",
+  "steps": [
+    "STEP 1 - Create src/workspaceValidator.js with a validateWorkspaces function that checks: (a) every node, group, pin, image, and edge has a valid workspaceId, (b) every edge source and target reference an existing object (node, group, or image), (c) no object references a workspace that does not exist.",
+    "STEP 2 - The utility should output warnings/errors via console.warn and console.error.",
+    "STEP 3 - Import and call the validator in App.jsx at key points (after imports, after migrations, after exports) gated behind import.meta.env.DEV.",
+    "STEP 4 - Run npm run build to verify no compilation errors."
+  ],
+  "acceptance_criteria": [
+    "src/workspaceValidator.js exists with a validateWorkspaces function",
+    "The validator checks that every node, group, pin, image, and edge has a valid workspaceId",
+    "The validator checks that every edge source and target reference an existing object",
+    "The validator checks that no object references a workspace that does not exist",
+    "The validator uses console.warn/console.error for output",
+    "The validator is gated behind import.meta.env.DEV (only runs in dev builds)",
+    "npm run build completes successfully with no errors"
+  ],
+  "verification": [
+    "Run 'npm run build' in /projects/sandbox/Clear-mind and confirm it exits with code 0 and no errors"
+  ],
+  "blocked_reason": null,
+  "findings": "Created src/workspaceValidator.js with validateWorkspaces() function. Integrated at 7 call sites in App.jsx: init migration, project switch, project delete/switch, project open, handleImport, importAllData, and exportData. All gated behind import.meta.env.DEV. Build passes cleanly."
+}

@@ -19,6 +19,7 @@ import MarkdownRenderer from './MarkdownRenderer';
 import CardEditorPanel from './CardEditorPanel';
 import { saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject } from './firebaseService';
 import { isFirebaseConfigured } from './firebase';
+import { validateWorkspaces } from './workspaceValidator';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -178,19 +179,19 @@ const defaultWorkspaces = [
   {
     id: 'ws-1', name: 'Product Launch Roadmap',
     groups: [
-      { id: 'g-1', name: 'Phase 1: Discovery & Research', x: 80, y: 80, width: 440, height: 440, theme: 'orange', parentGroupId: null },
-      { id: 'g-2', name: 'Phase 2: Product Design UI', x: 580, y: 80, width: 440, height: 440, theme: 'purple', parentGroupId: null }
+      { id: 'g-1', name: 'Phase 1: Discovery & Research', x: 80, y: 80, width: 440, height: 440, theme: 'orange', parentGroupId: null, workspaceId: 'ws-1' },
+      { id: 'g-2', name: 'Phase 2: Product Design UI', x: 580, y: 80, width: 440, height: 440, theme: 'purple', parentGroupId: null, workspaceId: 'ws-1' }
     ],
     nodes: [
-      { id: '1', x: 130, y: 150, title: 'User Interviews', content: 'Synthesize feedback from 15 target users.', theme: 'orange', groupId: 'g-1', cloneSourceId: null },
-      { id: '2', x: 130, y: 310, title: 'Competitor Benchmark', content: 'Benchmark workflows against Top 3 competitors.', theme: 'blue', groupId: 'g-1', cloneSourceId: null },
-      { id: '3', x: 630, y: 150, title: 'Component Library', content: 'Establish design system in Figma.', theme: 'purple', groupId: 'g-2', cloneSourceId: null },
-      { id: '4', x: 1100, y: 200, title: 'Launch Strategy Plan', content: 'Define GTM parameters.', theme: 'blue', groupId: null, cloneSourceId: null }
+      { id: '1', x: 130, y: 150, title: 'User Interviews', content: 'Synthesize feedback from 15 target users.', theme: 'orange', groupId: 'g-1', cloneSourceId: null, workspaceId: 'ws-1' },
+      { id: '2', x: 130, y: 310, title: 'Competitor Benchmark', content: 'Benchmark workflows against Top 3 competitors.', theme: 'blue', groupId: 'g-1', cloneSourceId: null, workspaceId: 'ws-1' },
+      { id: '3', x: 630, y: 150, title: 'Component Library', content: 'Establish design system in Figma.', theme: 'purple', groupId: 'g-2', cloneSourceId: null, workspaceId: 'ws-1' },
+      { id: '4', x: 1100, y: 200, title: 'Launch Strategy Plan', content: 'Define GTM parameters.', theme: 'blue', groupId: null, cloneSourceId: null, workspaceId: 'ws-1' }
     ],
     edges: [
-      { id: 'e1', source: '1', target: '3' },
-      { id: 'e2', source: '2', target: '3' },
-      { id: 'e3', source: '3', target: '4' }
+      { id: 'e1', source: '1', target: '3', workspaceId: 'ws-1' },
+      { id: 'e2', source: '2', target: '3', workspaceId: 'ws-1' },
+      { id: 'e3', source: '3', target: '4', workspaceId: 'ws-1' }
     ],
     images: [],
     pins: []
@@ -340,6 +341,18 @@ const DEFAULT_REMINDERS = [
 const MARKDOWN_ZOOM_THRESHOLD = 0.6;
 const MAX_CARD_WIDTH = 600;
 const MAX_CARD_HEIGHT = 800;
+
+// Helper: stamp workspaceId on all objects in workspaces that are missing it
+function migrateWorkspaceIds(workspaces) {
+  return workspaces.map(ws => ({
+    ...ws,
+    nodes: (ws.nodes || []).map(n => n.workspaceId ? n : { ...n, workspaceId: ws.id }),
+    edges: (ws.edges || []).map(e => e.workspaceId ? e : { ...e, workspaceId: ws.id }),
+    groups: (ws.groups || []).map(g => g.workspaceId ? g : { ...g, workspaceId: ws.id }),
+    pins: (ws.pins || []).map(p => p.workspaceId ? p : { ...p, workspaceId: ws.id }),
+    images: (ws.images || []).map(img => img.workspaceId ? img : { ...img, workspaceId: ws.id })
+  }));
+}
 
 export default function WorkflowApp() {
   // --- Core State ---
@@ -764,6 +777,10 @@ export default function WorkflowApp() {
               const nds = ws.nodes || [];
               return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
             });
+
+            // Migrate: stamp workspaceId on any objects missing it
+            initialWorkspaces = migrateWorkspaceIds(initialWorkspaces);
+            if (import.meta.env.DEV) validateWorkspaces(initialWorkspaces, 'after init migration', activeProj.tasks || []);
             
             setWorkspaces(initialWorkspaces);
             setActiveTab(activeProj.activeTab || (initialWorkspaces.length > 0 ? initialWorkspaces[0].id : ''));
@@ -1277,7 +1294,8 @@ export default function WorkflowApp() {
         x: pasteX,
         y: pasteY,
         groupId: null,
-        cloneSourceId: null
+        cloneSourceId: null,
+        workspaceId: activeTab
       };
 
       if (clipData.action === 'cut') {
@@ -1433,7 +1451,8 @@ export default function WorkflowApp() {
         id: groupIdMap[g.id],
         x: g.x + pasteX,
         y: g.y + pasteY,
-        parentGroupId: g.parentGroupId ? groupIdMap[g.parentGroupId] || null : null
+        parentGroupId: g.parentGroupId ? groupIdMap[g.parentGroupId] || null : null,
+        workspaceId: activeTab
       }));
 
       const newNodes = clipData.nodes.map(n => ({
@@ -1441,14 +1460,16 @@ export default function WorkflowApp() {
         id: nodeIdMap[n.id],
         x: n.x + pasteX,
         y: n.y + pasteY,
-        groupId: n.groupId ? groupIdMap[n.groupId] || null : null
+        groupId: n.groupId ? groupIdMap[n.groupId] || null : null,
+        workspaceId: activeTab
       }));
 
       const newEdges = clipData.edges.map(e => ({
         ...e,
         id: `e-${Date.now()}-${idCounter++}`,
         source: nodeIdMap[e.source] || e.source,
-        target: nodeIdMap[e.target] || e.target
+        target: nodeIdMap[e.target] || e.target,
+        workspaceId: activeTab
       }));
 
       if (clipData.action === 'cut') {
@@ -1907,7 +1928,7 @@ export default function WorkflowApp() {
           const exists = currentEdges.some(edge => (edge.source === sourceId && edge.target === targetId) || (edge.source === targetId && edge.target === sourceId));
           if (!exists) {
             takeSnapshot();
-            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+            updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId, workspaceId: activeTab }] }));
             showToast('Connected');
           } else {
             showToast('Already connected');
@@ -1970,6 +1991,20 @@ export default function WorkflowApp() {
     e.stopPropagation();
     if (workspaces.length <= 1) return;
     takeSnapshot();
+
+    // Convert tasks linked to pins in this workspace to unassigned
+    const wsToDelete = workspaces.find(w => w.id === id);
+    if (wsToDelete) {
+      const pinIdsInWorkspace = new Set((wsToDelete.pins || []).map(p => p.id));
+      if (pinIdsInWorkspace.size > 0) {
+        setTasks(prev => prev.map(t =>
+          t.locationPinId && pinIdsInWorkspace.has(t.locationPinId)
+            ? { ...t, locationPinId: undefined, locationWorkspaceId: undefined }
+            : t
+        ));
+      }
+    }
+
     setWorkspaces(prev => prev.filter(w => w.id !== id));
     if (activeTab === id) setActiveTab(workspaces.find(w => w.id !== id).id);
   };
@@ -1977,6 +2012,103 @@ export default function WorkflowApp() {
   const renameWorkspace = (id, newName) => {
     setWorkspaces(prev => prev.map(ws => ws.id === id ? { ...ws, name: newName } : ws));
     setEditingTab(null);
+  };
+
+  const duplicateWorkspace = (wsId) => {
+    takeSnapshot();
+    const source = workspaces.find(w => w.id === wsId);
+    if (!source) return;
+    const newWsId = `ws-${Date.now()}`;
+    let idCounter = nextId;
+    const nodeIdMap = {};
+    const groupIdMap = {};
+    const pinIdMap = {};
+
+    // Generate new IDs for groups
+    (source.groups || []).forEach(g => {
+      groupIdMap[g.id] = `g-${Date.now()}-${idCounter}`;
+      idCounter++;
+    });
+
+    // Generate new IDs for nodes
+    (source.nodes || []).forEach(n => {
+      nodeIdMap[n.id] = idCounter.toString();
+      idCounter++;
+    });
+
+    // Generate new IDs for pins
+    (source.pins || []).forEach(p => {
+      pinIdMap[p.id] = `pin-${Date.now()}-${idCounter}`;
+      idCounter++;
+    });
+
+    const newNodes = (source.nodes || []).map(n => ({
+      ...n,
+      id: nodeIdMap[n.id],
+      groupId: n.groupId ? groupIdMap[n.groupId] || null : null,
+      cloneSourceId: n.cloneSourceId ? (nodeIdMap[n.cloneSourceId] || n.cloneSourceId) : null,
+      workspaceId: newWsId
+    }));
+
+    const newGroups = (source.groups || []).map(g => ({
+      ...g,
+      id: groupIdMap[g.id],
+      parentGroupId: g.parentGroupId ? groupIdMap[g.parentGroupId] || null : null,
+      workspaceId: newWsId
+    }));
+
+    const newEdges = (source.edges || []).map(e => ({
+      ...e,
+      id: `e-${Date.now()}-${idCounter++}`,
+      source: nodeIdMap[e.source] || e.source,
+      target: nodeIdMap[e.target] || e.target,
+      workspaceId: newWsId
+    }));
+
+    const newPins = (source.pins || []).map(p => ({
+      ...p,
+      id: pinIdMap[p.id],
+      workspaceId: newWsId
+    }));
+
+    const newImages = (source.images || []).map(img => ({
+      ...img,
+      id: `img-${Date.now()}-${idCounter++}`,
+      workspaceId: newWsId
+    }));
+
+    const newWorkspace = {
+      id: newWsId,
+      name: `${source.name} (Copy)`,
+      nodes: newNodes,
+      edges: newEdges,
+      groups: newGroups,
+      pins: newPins,
+      images: newImages
+    };
+
+    setWorkspaces(prev => [...prev, newWorkspace]);
+    setActiveTab(newWsId);
+    setNextId(idCounter);
+    setTransform({ x: 0, y: 0, scale: 1 });
+
+    // Duplicate tasks linked to pins in the source workspace
+    if (Object.keys(pinIdMap).length > 0) {
+      setTasks(prev => {
+        const newTasks = [];
+        for (const task of prev) {
+          if (task.locationPinId && pinIdMap[task.locationPinId]) {
+            newTasks.push({
+              ...task,
+              id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              locationPinId: pinIdMap[task.locationPinId],
+              locationWorkspaceId: newWsId,
+            });
+          }
+        }
+        return newTasks.length > 0 ? [...prev, ...newTasks] : prev;
+      });
+    }
   };
 
   // --- Project Management Functions ---
@@ -2089,6 +2221,9 @@ export default function WorkflowApp() {
       const nds = ws.nodes || [];
       return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
     });
+    // Migrate: stamp workspaceId on any objects missing it
+    targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project switch', normalizeTasks(target.tasks || []));
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
     setActiveTab(target.activeTab || (targetWorkspaces.length > 0 ? targetWorkspaces[0].id : ''));
@@ -2145,6 +2280,9 @@ export default function WorkflowApp() {
       const nds = ws.nodes || [];
       return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
     });
+    // Migrate: stamp workspaceId on any objects missing it
+    targetWorkspaces = migrateWorkspaceIds(targetWorkspaces);
+    if (import.meta.env.DEV) validateWorkspaces(targetWorkspaces, 'after project delete/switch', normalizeTasks(target.tasks || []));
     const isDefault = target.id === defaultProjectId;
     setActiveProjectId(targetId);
     setWorkspaces(targetWorkspaces);
@@ -2249,12 +2387,28 @@ export default function WorkflowApp() {
   const duplicateProject = (targetId) => {
     const target = projects.find(p => p.id === targetId);
     if (!target) return;
+    const cloned = JSON.parse(JSON.stringify(target));
+    // Generate new unique workspace IDs and reassign all object workspaceIds
+    const newWorkspaces = (cloned.workspaces || []).map(ws => {
+      const newWsId = `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return {
+        ...ws,
+        id: newWsId,
+        nodes: (ws.nodes || []).map(n => ({ ...n, workspaceId: newWsId })),
+        edges: (ws.edges || []).map(e => ({ ...e, workspaceId: newWsId })),
+        groups: (ws.groups || []).map(g => ({ ...g, workspaceId: newWsId })),
+        pins: (ws.pins || []).map(p => ({ ...p, workspaceId: newWsId })),
+        images: (ws.images || []).map(img => ({ ...img, workspaceId: newWsId }))
+      };
+    });
     const newProj = {
-      ...JSON.parse(JSON.stringify(target)),
+      ...cloned,
       id: `proj-${Date.now()}`,
       name: `${target.name} (Copy)`,
       password: '',
-      lastModified: Date.now()
+      lastModified: Date.now(),
+      workspaces: newWorkspaces,
+      activeTab: newWorkspaces.length > 0 ? newWorkspaces[0].id : ''
     };
     setProjects(prev => {
       const updated = [...prev, newProj];
@@ -2351,6 +2505,9 @@ export default function WorkflowApp() {
         const nds = ws.nodes || [];
         return { ...ws, groups: computeLayout(grps, nds), nodes: nds, edges: ws.edges || [] };
       });
+      // Migrate: stamp workspaceId on any objects missing it
+      nextWorkspaces = migrateWorkspaceIds(nextWorkspaces);
+      if (import.meta.env.DEV) validateWorkspaces(nextWorkspaces, 'after project open', next.tasks || []);
       setWorkspaces(nextWorkspaces);
       setActiveTab(next.activeTab || (nextWorkspaces.length > 0 ? nextWorkspaces[0].id : ''));
       setNextId(next.nextId || 10);
@@ -2406,6 +2563,7 @@ export default function WorkflowApp() {
 
   // --- Import / Export ---
   const exportData = () => {
+    if (import.meta.env.DEV) validateWorkspaces(workspaces, 'before exportData', tasks);
     const data = { workspaces, activeTab, nextId, tasks, taskGroups };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2486,8 +2644,18 @@ export default function WorkflowApp() {
         const importedData = JSON.parse(event.target.result);
         if (importedData.workspaces && Array.isArray(importedData.workspaces)) {
           takeSnapshot();
-          setWorkspaces(importedData.workspaces);
-          setActiveTab(importedData.activeTab || importedData.workspaces[0]?.id || '');
+          // Stamp workspaceId on all objects in imported workspaces
+          const migratedWorkspaces = importedData.workspaces.map(ws => ({
+            ...ws,
+            nodes: (ws.nodes || []).map(n => ({ ...n, workspaceId: ws.id })),
+            edges: (ws.edges || []).map(e => ({ ...e, workspaceId: ws.id })),
+            groups: (ws.groups || []).map(g => ({ ...g, workspaceId: ws.id })),
+            pins: (ws.pins || []).map(p => ({ ...p, workspaceId: ws.id })),
+            images: (ws.images || []).map(img => ({ ...img, workspaceId: ws.id }))
+          }));
+          setWorkspaces(migratedWorkspaces);
+          if (import.meta.env.DEV) validateWorkspaces(migratedWorkspaces, 'after handleImport');
+          setActiveTab(importedData.activeTab || migratedWorkspaces[0]?.id || '');
           setNextId(importedData.nextId || 10);
           if (importedData.tasks) setTasks(normalizeTasks(importedData.tasks));
           if (importedData.taskGroups) setTaskGroups(importedData.taskGroups.map((g, i) => ({
@@ -2536,13 +2704,21 @@ export default function WorkflowApp() {
           try {
             const restoredProjects = importedData.projects;
             const restoredDefault = importedData.defaultProjectId || restoredProjects[0]?.id;
-            setProjects(restoredProjects);
+            // Migrate workspaceId on all objects in all projects
+            const migratedProjects = restoredProjects.map(proj => ({
+              ...proj,
+              workspaces: migrateWorkspaceIds(proj.workspaces || [])
+            }));
+            if (import.meta.env.DEV) {
+              migratedProjects.forEach(proj => validateWorkspaces(proj.workspaces || [], `after importAllData [project: ${proj.id}]`));
+            }
+            setProjects(migratedProjects);
             setDefaultProjectId(restoredDefault);
             setActiveProjectId(restoredDefault);
-            localStorage.setItem('nexus-app-state', JSON.stringify(restoredProjects));
+            localStorage.setItem('nexus-app-state', JSON.stringify(migratedProjects));
             localStorage.setItem('nexus-active-project', restoredDefault);
             localStorage.setItem('nexus-default-project', restoredDefault);
-            const defaultProj = restoredProjects.find(p => p.id === restoredDefault) || restoredProjects[0];
+            const defaultProj = migratedProjects.find(p => p.id === restoredDefault) || migratedProjects[0];
             if (defaultProj) {
               setWorkspaces(defaultProj.workspaces || []);
               setActiveTab(defaultProj.activeTab || defaultProj.workspaces?.[0]?.id || '');
@@ -2684,7 +2860,8 @@ export default function WorkflowApp() {
       x: n.x + offsetX,
       y: n.y + offsetY,
       groupId: n.groupId ? (groupIdMap[n.groupId] || null) : null,
-      cloneSourceId: null
+      cloneSourceId: null,
+      workspaceId: activeTab
     }));
 
     const newEdges = importedEdges
@@ -2692,7 +2869,8 @@ export default function WorkflowApp() {
       .map(e => ({
         id: `e-${currentId++}`,
         source: nodeIdMap[e.source],
-        target: nodeIdMap[e.target]
+        target: nodeIdMap[e.target],
+        workspaceId: activeTab
       }));
 
     const newGroups = importedGroups.map(g => ({
@@ -2700,7 +2878,8 @@ export default function WorkflowApp() {
       id: groupIdMap[g.id],
       x: g.x + offsetX,
       y: g.y + offsetY,
-      parentGroupId: g.parentGroupId ? (groupIdMap[g.parentGroupId] || null) : null
+      parentGroupId: g.parentGroupId ? (groupIdMap[g.parentGroupId] || null) : null,
+      workspaceId: activeTab
     }));
 
     updateActiveWorkspace(ws => {
@@ -2855,6 +3034,7 @@ export default function WorkflowApp() {
         icon: '\ud83c\udfaf',
         visibility_status: true,
         created_date: new Date().toISOString(),
+        workspaceId: activeTab,
       };
       updateActiveWorkspace(ws => ({
         pins: [...(ws.pins || []), newPin],
@@ -3278,7 +3458,8 @@ export default function WorkflowApp() {
             width: displayWidth,
             height: displayHeight,
             src: compressedBase64,
-            groupId: imageGroupId
+            groupId: imageGroupId,
+            workspaceId: activeTab
           }]
         }));
       };
@@ -3317,6 +3498,7 @@ export default function WorkflowApp() {
 
     const newNode = {
       id: nextId.toString(),
+      workspaceId: activeTab,
       x: targetX, y: targetY,
       title: 'New Card', content: '', theme: 'blue',
       groupId: targetGroupId, cloneSourceId: null
@@ -3341,6 +3523,7 @@ export default function WorkflowApp() {
     const pinCount = currentPins.length + 1;
     const newPin = {
       id: `pin-${Date.now()}`,
+      workspaceId: activeTab,
       name: `Pin ${pinCount}`,
       canvas_position_x: canvasX,
       canvas_position_y: canvasY,
@@ -3366,6 +3549,12 @@ export default function WorkflowApp() {
 
   const deletePin = (pinId, workspaceId) => {
     const targetId = workspaceId || activeTab;
+    // Clear locationPinId/locationWorkspaceId on any task referencing this pin
+    setTasks(prev => prev.map(t =>
+      t.locationPinId === pinId
+        ? { ...t, locationPinId: undefined, locationWorkspaceId: undefined }
+        : t
+    ));
     setWorkspaces(prev => prev.map(ws => ws.id === targetId ? { ...ws, pins: (ws.pins || []).filter(p => p.id !== pinId) } : ws));
     if (editingPinOnCanvas === pinId) setEditingPinOnCanvas(null);
     if (focusedPinId === pinId) setFocusedPinId(null);
@@ -3585,6 +3774,7 @@ export default function WorkflowApp() {
 
     const newGroup = {
       id: `g-${Date.now()}`,
+      workspaceId: activeTab,
       name: 'Dynamic Section',
       x: targetX, y: targetY,
       width: 440, height: 420,
@@ -3601,6 +3791,7 @@ export default function WorkflowApp() {
 
     const dup = {
       id: nextId.toString(),
+      workspaceId: activeTab,
       x: target.x + 40,
       y: target.y + 40,
       title: `${target.title} (Copy)`,
@@ -3631,6 +3822,7 @@ export default function WorkflowApp() {
 
     const clone = {
       id: nextId.toString(),
+      workspaceId: activeTab,
       x: target.x + 60,
       y: target.y + 60,
       title: target.title,
@@ -3672,7 +3864,8 @@ export default function WorkflowApp() {
       content: target.content,
       theme: target.theme,
       groupId: null,
-      cloneSourceId: sourceId
+      cloneSourceId: sourceId,
+      workspaceId: targetWorkspaceId
     };
 
     setWorkspaces(prev => prev.map(ws => {
@@ -4787,11 +4980,16 @@ export default function WorkflowApp() {
                         <span className="text-sm truncate" onDoubleClick={() => { takeSnapshot(); setEditingTab(ws.id); }}>{ws.name}</span>
                       )}
                     </div>
-                    {workspaces.length > 1 && (
-                      <button onClick={(e) => deleteWorkspace(ws.id, e)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200">
-                        <X className="w-3.5 h-3.5 text-slate-400 hover:text-red-500" />
+                    <div className="flex items-center gap-1">
+                      <button onClick={(e) => { e.stopPropagation(); duplicateWorkspace(ws.id); }} className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200" title="Duplicate workspace">
+                        <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500" />
                       </button>
-                    )}
+                      {workspaces.length > 1 && (
+                        <button onClick={(e) => deleteWorkspace(ws.id, e)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200">
+                          <X className="w-3.5 h-3.5 text-slate-400 hover:text-red-500" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <button onClick={addWorkspace} className="flex items-center justify-center p-2 rounded-lg border border-dashed border-slate-200 hover:border-indigo-300 text-xs font-semibold text-indigo-600 hover:bg-indigo-50/50 transition-all mt-1">
@@ -4926,7 +5124,7 @@ export default function WorkflowApp() {
                       const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === group.id);
                       if (!exists) {
                         takeSnapshot();
-                        updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: group.id }] }));
+                        updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: group.id, workspaceId: activeTab }] }));
                       }
                       setConnecting(null);
                       setConnectHoverNodeId(null);
@@ -5010,7 +5208,7 @@ export default function WorkflowApp() {
                   <div 
                     className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
                     onPointerDown={(e) => e.stopPropagation()} 
-                    onPointerUp={(e) => { e.stopPropagation(); if (connecting) { if (connecting.sourceId !== group.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === group.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: group.id }] })); } } setConnecting(null); setConnectHoverNodeId(null); } }}
+                    onPointerUp={(e) => { e.stopPropagation(); if (connecting) { if (connecting.sourceId !== group.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === group.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: group.id, workspaceId: activeTab }] })); } } setConnecting(null); setConnectHoverNodeId(null); } }}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
                   </div>
@@ -5124,7 +5322,7 @@ export default function WorkflowApp() {
                         const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === img.id);
                         if (!exists) {
                           takeSnapshot();
-                          updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: img.id }] }));
+                          updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: img.id, workspaceId: activeTab }] }));
                         }
                       }
                       setConnecting(null);
@@ -5230,7 +5428,7 @@ export default function WorkflowApp() {
                       const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id);
                       if (!exists) {
                         takeSnapshot();
-                        updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id }] }));
+                        updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id, workspaceId: activeTab }] }));
                       }
                       setConnecting(null);
                       setConnectHoverNodeId(null);
@@ -5361,7 +5559,7 @@ export default function WorkflowApp() {
                   <div 
                     className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full cursor-crosshair z-30 flex items-center justify-center ${connecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all`}
                     onPointerDown={(e) => e.stopPropagation()} 
-                    onPointerUp={(e) => { e.stopPropagation(); if (connecting && connecting.sourceId !== node.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id }] })); } } setConnecting(null); setConnectHoverNodeId(null); }}
+                    onPointerUp={(e) => { e.stopPropagation(); if (connecting && connecting.sourceId !== node.id) { const exists = edges.some(edge => edge.source === connecting.sourceId && edge.target === node.id); if (!exists) { takeSnapshot(); updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}`, source: connecting.sourceId, target: node.id, workspaceId: activeTab }] })); } } setConnecting(null); setConnectHoverNodeId(null); }}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${theme.port}`} />
                   </div>
@@ -6170,7 +6368,7 @@ export default function WorkflowApp() {
               <button onClick={() => { takeSnapshot(); updateActiveWorkspace(ws => { const filtered = ws.nodes.filter(n => !selectedNodeIds.includes(n.id)); const filteredGroups = ws.groups.filter(g => !selectedNodeIds.includes(g.id)); const filteredImages = (ws.images || []).filter(img => !selectedNodeIds.includes(img.id)); const filteredEdges = ws.edges.filter(e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)); return { nodes: filtered, edges: filteredEdges, groups: computeLayout(filteredGroups, filtered), images: filteredImages }; }); setSelectedNodeIds([]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors w-full text-left">
                 <Trash2 className="w-4 h-4" /> Delete
               </button>
-              <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40 })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors w-full text-left">
+              <button onClick={() => { takeSnapshot(); const selectedNodes = nodes.filter(n => selectedNodeIds.includes(n.id)); const selectedEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)); const selectedImages = (activeWs?.images || []).filter(img => selectedNodeIds.includes(img.id)); let currentId = nextId; const idMap = {}; const newNodes = selectedNodes.map(n => { const newId = currentId.toString(); idMap[n.id] = newId; currentId++; return { ...n, id: newId, x: n.x + 40, y: n.y + 40, cloneSourceId: null, workspaceId: activeTab }; }); const newEdges = selectedEdges.map(e => ({ id: `e-${currentId++}`, source: idMap[e.source] || e.source, target: idMap[e.target] || e.target, workspaceId: activeTab })); const newImages = selectedImages.map(img => ({ ...img, id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, x: img.x + 40, y: img.y + 40, workspaceId: activeTab })); updateActiveWorkspace(ws => { const updatedNodes = [...ws.nodes, ...newNodes]; return { nodes: updatedNodes, edges: [...ws.edges, ...newEdges], groups: computeLayout(ws.groups, updatedNodes), images: [...(ws.images || []), ...newImages] }; }); setNextId(currentId); setSelectedNodeIds([...newNodes.map(n => n.id), ...newImages.map(img => img.id)]); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors w-full text-left">
                 <Copy className="w-4 h-4" /> Duplicate
               </button>
               <button onClick={() => { exportSelectedNodes(selectedNodeIds); setSelectionMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors w-full text-left" id="export-selected-btn">
@@ -6182,7 +6380,7 @@ export default function WorkflowApp() {
                   const exists = edges.some(e => (e.source === sourceId && e.target === targetId) || (e.source === targetId && e.target === sourceId));
                   if (!exists) {
                     takeSnapshot();
-                    updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId }] }));
+                    updateActiveWorkspace(ws => ({ edges: [...ws.edges, { id: `e-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, source: sourceId, target: targetId, workspaceId: activeTab }] }));
                     showToast('Connected');
                   } else {
                     showToast('Already connected');
