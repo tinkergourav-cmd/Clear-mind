@@ -36,6 +36,7 @@ import {
   migrateFromBlobToPerWorkspace,
   saveWorkspaceToFirestore,
   deleteWorkspaceFromFirestore,
+  deleteProjectFromFirestore,
   removeWorkspaceLocal,
   saveTasksToFirestore,
   saveProjectToFirestore,
@@ -433,6 +434,10 @@ export default function WorkflowApp() {
   const debouncedWorkspaceSaverRef = useRef(createDebouncedSaver(300));
   const debouncedTaskSaverRef = useRef(createDebouncedSaver(500));
   const debouncedMetaSaverRef = useRef(createDebouncedSaver(200));
+
+  // --- Refs for tracking previous values to avoid redundant saves ---
+  const prevWorkspacesRef = useRef(null);
+  const prevActiveProjectIdRef = useRef(null);
 
   // --- History (Undo/Redo) States ---
   const pastRef = useRef([]);
@@ -1169,14 +1174,23 @@ export default function WorkflowApp() {
 
   // --- Three independent debounced autosave useEffects ---
   // (a) Workspace autosave (300ms): watches [workspaces, activeTab]
+  // NOTE (stale closure risk): The cleanup cancels the debounced callback when activeProjectId
+  // changes, and the eager meta commit below only fires when activeProjectId actually changes
+  // (guarded by prevActiveProjectIdRef). switchProject/cycleToProject explicitly persist the old
+  // project before switching, so the stale closure race is mitigated. Any new code path that
+  // changes activeProjectId must also pre-persist the old project to avoid data loss.
   useEffect(() => {
     if (!initialized || !activeProjectId) return;
     debouncedWorkspaceSaverRef.current(() => {
       const currentWorkspaces = workspaces;
+      const prevWorkspaces = prevWorkspacesRef.current;
       const projMeta = loadProjectMeta(activeProjectId);
-      const workspaceIds = projMeta ? (projMeta.workspaceIds || []) : currentWorkspaces.map(ws => ws.id);
-      // Save each workspace
+      // Save only workspaces whose reference changed (or all if no previous state)
+      let anyChanged = false;
       for (const ws of currentWorkspaces) {
+        const prevWs = prevWorkspaces ? prevWorkspaces.find(pw => pw.id === ws.id) : null;
+        if (prevWs === ws && prevWorkspaces) continue; // reference unchanged, skip
+        anyChanged = true;
         const wsData = {
           id: ws.id,
           name: ws.name || 'Workspace',
@@ -1194,7 +1208,7 @@ export default function WorkflowApp() {
         }
       }
       // Update project metadata with activeTab and workspaceIds
-      if (projMeta) {
+      if (projMeta && anyChanged) {
         const updatedMeta = { ...projMeta, activeTab, workspaceIds: currentWorkspaces.map(ws => ws.id), lastModified: Date.now() };
         saveProjectMeta(activeProjectId, updatedMeta);
         if (isFirebaseConfigured()) {
@@ -1204,20 +1218,29 @@ export default function WorkflowApp() {
         }
       }
       // Update in-memory projects
-      setProjects(prev => prev.map(p => p.id === activeProjectId
-        ? { ...p, workspaces: currentWorkspaces, activeTab, lastModified: Date.now() }
-        : p
-      ));
+      if (anyChanged) {
+        setProjects(prev => prev.map(p => p.id === activeProjectId
+          ? { ...p, workspaces: currentWorkspaces, activeTab, lastModified: Date.now() }
+          : p
+        ));
+      }
+      // Persist meta/userMeta inside the debounced closure to avoid per-keystroke Firestore writes
+      const meta = loadMeta();
+      if (meta) {
+        saveMeta({ ...meta, activeProjectId });
+      }
+      if (isFirebaseConfigured()) {
+        setSyncStatus('syncing');
+        saveUserMeta({ activeProjectId, defaultProjectId }).catch(() => {});
+      }
+      // Update previous workspaces ref after successful save
+      prevWorkspacesRef.current = currentWorkspaces;
       if (!isFirebaseConfigured()) setSyncStatus('synced');
     });
-    // Update meta with active project
-    const meta = loadMeta();
-    if (meta) {
-      saveMeta({ ...meta, activeProjectId });
-    }
-    if (isFirebaseConfigured()) {
-      setSyncStatus('syncing');
-      saveUserMeta({ activeProjectId, defaultProjectId }).catch(() => {});
+    // Track activeProjectId changes - reset workspace tracking on project switch
+    if (prevActiveProjectIdRef.current !== activeProjectId) {
+      prevWorkspacesRef.current = null; // force full save on project switch
+      prevActiveProjectIdRef.current = activeProjectId;
     }
     return () => debouncedWorkspaceSaverRef.current.cancel();
   }, [workspaces, activeTab, initialized, activeProjectId]);
@@ -2800,6 +2823,11 @@ export default function WorkflowApp() {
     }
     localStorage.removeItem(`cm-proj-${targetId}`);
     localStorage.removeItem(`cm-tasks-${targetId}`);
+    // Delete Firestore documents (project doc, workspace subcollection, tasks subcollection)
+    if (isFirebaseConfigured()) {
+      const wsIds = (deletedProjMeta && deletedProjMeta.workspaceIds) || (target.workspaces || []).map(ws => ws.id);
+      deleteProjectFromFirestore(targetId, wsIds).catch(() => {});
+    }
     // If deleting the default project, reassign default
     if (targetId === defaultProjectId) {
       const newDefault = updated[0].id;

@@ -599,6 +599,34 @@ export async function deleteWorkspaceFromFirestore(projectId, workspaceId) {
 }
 
 /**
+ * Delete an entire project from Firestore, including its workspace and task
+ * subcollection documents and the project document itself.
+ * @param {string} projectId
+ * @param {string[]} workspaceIds - IDs of workspaces to delete from subcollection
+ * @returns {Promise<boolean>}
+ */
+export async function deleteProjectFromFirestore(projectId, workspaceIds = []) {
+  if (!isFirebaseConfigured() || !db) return false;
+  try {
+    // Delete all workspace subcollection documents
+    for (const wsId of workspaceIds) {
+      const wsRef = doc(db, 'projects', projectId, 'workspaces', wsId);
+      await deleteDoc(wsRef);
+    }
+    // Delete the tasks subcollection document
+    const tasksRef = doc(db, 'projects', projectId, 'tasks', 'taskData');
+    await deleteDoc(tasksRef);
+    // Delete the project document itself
+    const projRef = doc(db, 'projects', projectId);
+    await deleteDoc(projRef);
+    return true;
+  } catch (error) {
+    console.warn('[PersistenceService] Error deleting project from Firestore:', error.message);
+    return false;
+  }
+}
+
+/**
  * Load a single workspace from Firestore subcollection.
  * @param {string} projectId
  * @param {string} workspaceId
