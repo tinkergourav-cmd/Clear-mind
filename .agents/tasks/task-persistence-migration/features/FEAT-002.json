@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Rewire App.jsx to use the new persistenceService for all read/write operations. Replace the monolithic autosave with 3 independent debounced useEffects. Update initialization, project CRUD, import/export, and project switching to use the per-workspace persistence API. Maintain backward compatibility for old export formats.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "1. UPDATE IMPORTS in src/App.jsx: Add import of key functions from './persistenceService' (initializePersistence, saveProjectMeta, saveWorkspace, saveTasks, saveMeta, loadWorkspace, loadTasks, generateId, createDebouncedSaver, detectMigrationNeeded). Keep existing firebaseService imports temporarily for backward compat during transition (they can be removed once all paths use the new service).",
     "2. REPLACE INITIALIZATION (lines ~656-900): Replace the existing init useEffect body with a call to initializePersistence(). Map the returned data structure to the existing React state variables (projects/setProjects can become a metadata map, workspaces/setWorkspaces loaded from per-workspace data, tasks from per-project tasks, etc.). Keep the password hashing migration logic. Keep the workspaceValidator calls. Keep the reminders loading. The initialization should: detect migration, run it if needed, then load via new API. Maintain the existing Firestore-first-then-localStorage fallback order. Keep setSyncStatus updates.",
@@ -32,5 +32,5 @@
     "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits 0 with no errors"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build succeeds cleanly. The old firebaseService imports (loadProjects, saveProjects, loadActiveProject, loadDefaultProject, saveActiveProject, saveDefaultProject) are kept for the initialization Firestore-first loading path as backward compat during transition. The chunk size warning is pre-existing and acceptable. Export format version bumped to 2 but import still handles both v1 and v2 (and nexus-full-backup type). The manual sync retry button in the UI was also updated to use the new persistence service."
 }
