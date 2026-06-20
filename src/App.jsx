@@ -20,6 +20,31 @@ import CardEditorPanel from './CardEditorPanel';
 import { saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject } from './firebaseService';
 import { isFirebaseConfigured } from './firebase';
 import { validateWorkspaces } from './workspaceValidator';
+import {
+  initializePersistence,
+  saveProjectMeta,
+  saveWorkspace as saveWorkspaceToLocal,
+  saveTasks,
+  saveMeta,
+  loadMeta,
+  loadWorkspace as loadWorkspaceFromLocal,
+  loadTasks,
+  loadProjectMeta,
+  loadAllProjectIds,
+  generateId,
+  createDebouncedSaver,
+  detectMigrationNeeded,
+  migrateFromBlobToPerWorkspace,
+  saveWorkspaceToFirestore,
+  saveTasksToFirestore,
+  saveProjectToFirestore,
+  loadProjectFromFirestore,
+  loadWorkspaceFromFirestore,
+  loadAllWorkspacesFromFirestore,
+  loadTasksFromFirestore,
+  saveUserMeta,
+  loadUserMeta
+} from './persistenceService';
 
 // --- Premium Color Themes (10 colors) ---
 const THEMES = {
@@ -658,6 +683,12 @@ export default function WorkflowApp() {
   useEffect(() => {
     const init = async () => {
       try {
+        // Run migration from blob to per-workspace if needed
+        const migrationCheck = detectMigrationNeeded();
+        if (migrationCheck.needed) {
+          migrateFromBlobToPerWorkspace();
+        }
+
         // Try loading from Firestore first (primary data source)
         let firestoreProjects = null;
         let firestoreActiveId = null;
@@ -670,8 +701,6 @@ export default function WorkflowApp() {
             firestoreDefaultId = await loadDefaultProject();
             if (firestoreProjects) {
               // --- Timestamp comparison: preserve newer local edits ---
-              // Compare the most recent lastModified from Firestore with localStorage
-              // to avoid losing offline edits when reconnecting.
               const localRaw = localStorage.getItem('nexus-app-state');
               let useLocal = false;
               if (localRaw) {
@@ -682,25 +711,17 @@ export default function WorkflowApp() {
                     const localNewest = getNewestTimestamp(localProjects);
                     const firestoreNewest = getNewestTimestamp(firestoreProjects);
                     if (localNewest > firestoreNewest) {
-                      // localStorage has newer data (offline edits) - use it instead
                       console.info('[Firebase] Local data is newer than cloud data. Keeping local edits and syncing up.');
                       useLocal = true;
-                      firestoreProjects = null; // Clear so we fall through to localStorage
+                      firestoreProjects = null;
                       firestoreActiveId = null;
                       firestoreDefaultId = null;
-                      // Sync the newer local data up to Firestore
                       saveProjects(localProjects).catch(() => {});
                     }
                   }
                 } catch (parseErr) {
                   // If localStorage is corrupted, just use Firestore data
                 }
-              }
-              if (!useLocal) {
-                // Firestore is newer or same - update localStorage as backup
-                localStorage.setItem('nexus-app-state', JSON.stringify(firestoreProjects));
-                if (firestoreActiveId) localStorage.setItem('nexus-active-project', firestoreActiveId);
-                if (firestoreDefaultId) localStorage.setItem('nexus-default-project', firestoreDefaultId);
               }
               setSyncStatus('synced');
             } else {
@@ -717,7 +738,7 @@ export default function WorkflowApp() {
         const savedActiveProject = firestoreActiveId || localStorage.getItem('nexus-active-project');
 
         if (savedAppState) {
-          // Load from new project system
+          // Load from project system
           const parsedProjects = JSON.parse(savedAppState);
           if (parsedProjects && Array.isArray(parsedProjects) && parsedProjects.length > 0) {
             // Migrate any unhashed passwords (short strings that are not 64-char hex)
@@ -729,9 +750,6 @@ export default function WorkflowApp() {
               }
               return p;
             }));
-            if (needsSave) {
-              localStorage.setItem('nexus-app-state', JSON.stringify(migratedProjects));
-            }
 
             // Migrate projects: add missing fields (description, thumbnail, lastModified)
             let migrationNeeded = false;
@@ -751,8 +769,26 @@ export default function WorkflowApp() {
               }
               return updated;
             });
-            if (migrationNeeded) {
-              localStorage.setItem('nexus-app-state', JSON.stringify(fullyMigrated));
+
+            // Persist migrations to per-workspace keys if needed
+            if (needsSave || migrationNeeded) {
+              for (const proj of fullyMigrated) {
+                const wsIds = (proj.workspaces || []).map(ws => ws.id);
+                saveProjectMeta(proj.id, {
+                  id: proj.id, name: proj.name || 'Untitled', description: proj.description || '',
+                  password: proj.password || null, thumbnail: proj.thumbnail || null,
+                  lastModified: proj.lastModified || Date.now(), activeTab: proj.activeTab || wsIds[0] || '',
+                  nextId: proj.nextId || 1, reminders: proj.reminders || [],
+                  workspaceIds: wsIds, schemaVersion: 2
+                });
+                for (const ws of (proj.workspaces || [])) {
+                  saveWorkspaceToLocal(proj.id, ws.id, {
+                    id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+                    groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+                  });
+                }
+                saveTasks(proj.id, { tasks: proj.tasks || [], taskGroups: proj.taskGroups || [] });
+              }
             }
 
             setProjects(fullyMigrated);
@@ -762,9 +798,11 @@ export default function WorkflowApp() {
             let resolvedDefaultId = savedDefaultId;
             if (!resolvedDefaultId || !fullyMigrated.find(p => p.id === resolvedDefaultId)) {
               resolvedDefaultId = fullyMigrated[0].id;
-              localStorage.setItem('nexus-default-project', resolvedDefaultId);
             }
             setDefaultProjectId(resolvedDefaultId);
+
+            // Save meta
+            saveMeta({ activeProjectId: resolvedDefaultId, defaultProjectId: resolvedDefaultId, schemaVersion: 2 });
 
             // Always load the default project on page load
             const activeId = resolvedDefaultId;
@@ -822,7 +860,11 @@ export default function WorkflowApp() {
             const defaultProjIdx = fullyMigrated.findIndex(p => p.id === resolvedDefaultId);
             if (defaultProjIdx >= 0 && fullyMigrated[defaultProjIdx].password) {
               fullyMigrated[defaultProjIdx] = { ...fullyMigrated[defaultProjIdx], password: '' };
-              localStorage.setItem('nexus-app-state', JSON.stringify(fullyMigrated));
+              // Save updated project meta without password
+              const projMetaUpdate = loadProjectMeta(resolvedDefaultId);
+              if (projMetaUpdate) {
+                saveProjectMeta(resolvedDefaultId, { ...projMetaUpdate, password: '' });
+              }
             }
           }
         } else {
@@ -830,8 +872,6 @@ export default function WorkflowApp() {
           const savedWs = localStorage.getItem('premium-workspaces');
           const savedTab = localStorage.getItem('premium-active-tab');
           const savedCounter = localStorage.getItem('premium-counter');
-          const savedPasswordEnabled = localStorage.getItem('nexus-password-enabled');
-          const savedPassword = localStorage.getItem('nexus-password');
 
           let initialWorkspaces = defaultWorkspaces;
           let initialTab = 'ws-1';
@@ -873,10 +913,21 @@ export default function WorkflowApp() {
           setActiveTab(initialTab);
           setNextId(initialNextId);
 
-          // Save to new format and clean up old keys
-          localStorage.setItem('nexus-app-state', JSON.stringify([defaultProject]));
-          localStorage.setItem('nexus-active-project', 'proj-default');
-          localStorage.setItem('nexus-default-project', 'proj-default');
+          // Save to per-workspace format and clean up old keys
+          const wsIds = initialWorkspaces.map(ws => ws.id);
+          saveProjectMeta('proj-default', {
+            id: 'proj-default', name: 'Default', description: '', password: '',
+            thumbnail: null, lastModified: Date.now(), activeTab: initialTab,
+            nextId: initialNextId, reminders: [], workspaceIds: wsIds, schemaVersion: 2
+          });
+          for (const ws of initialWorkspaces) {
+            saveWorkspaceToLocal('proj-default', ws.id, {
+              id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+              groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+            });
+          }
+          saveTasks('proj-default', { tasks: [], taskGroups: [] });
+          saveMeta({ activeProjectId: 'proj-default', defaultProjectId: 'proj-default', schemaVersion: 2 });
           localStorage.removeItem('premium-workspaces');
           localStorage.removeItem('premium-active-tab');
           localStorage.removeItem('premium-counter');
@@ -901,7 +952,7 @@ export default function WorkflowApp() {
       setWorkspaces(defaultWorkspaces);
       setActiveTab('ws-1');
       setNextId(10);
-      localStorage.setItem('nexus-default-project', 'proj-default');
+      saveMeta({ activeProjectId: 'proj-default', defaultProjectId: 'proj-default', schemaVersion: 2 });
       }
       setInitialized(true);
     };
@@ -1062,69 +1113,130 @@ export default function WorkflowApp() {
     projectsRef.current = projects;
   }, [projects]);
 
+  // --- Three independent debounced autosave useEffects ---
+  // (a) Workspace autosave (300ms): watches [workspaces, activeTab]
   useEffect(() => {
-    if (initialized && activeProjectId) {
-      setProjects(prev => {
-        const updated = prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const now = Date.now();
-          const lastMod = p.lastModified || 0;
-          const shouldUpdateTime = (now - lastMod) > 60000;
-          return { ...p, workspaces, activeTab, nextId, reminders, tasks, taskGroups, ...(shouldUpdateTime ? { lastModified: now } : {}) };
-        });
-        return updated;
-      });
-      // Debounced localStorage write (outside state updater)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        const currentProjects = projectsRef.current;
-        localStorage.setItem('nexus-app-state', JSON.stringify(currentProjects));
-        // Also save to Firestore (fire-and-forget)
+    if (!initialized || !activeProjectId) return;
+    const debouncedWorkspaceSave = createDebouncedSaver(300);
+    debouncedWorkspaceSave(() => {
+      const currentWorkspaces = workspaces;
+      const projMeta = loadProjectMeta(activeProjectId);
+      const workspaceIds = projMeta ? (projMeta.workspaceIds || []) : currentWorkspaces.map(ws => ws.id);
+      // Save each workspace
+      for (const ws of currentWorkspaces) {
+        const wsData = {
+          id: ws.id,
+          name: ws.name || 'Workspace',
+          nodes: ws.nodes || [],
+          edges: ws.edges || [],
+          groups: ws.groups || [],
+          pins: ws.pins || [],
+          images: ws.images || [],
+          lastModified: Date.now()
+        };
+        saveWorkspaceToLocal(activeProjectId, ws.id, wsData);
+        // Fire-and-forget Firestore save
         if (isFirebaseConfigured()) {
-          setSyncStatus('syncing');
-          saveProjects(currentProjects)
-            .then((success) => setSyncStatus(success ? 'synced' : 'error'))
-            .catch(() => setSyncStatus('error'));
-          saveActiveProject(activeProjectId).catch(() => {});
-          const defId = localStorage.getItem('nexus-default-project');
-          if (defId) saveDefaultProject(defId).catch(() => {});
+          saveWorkspaceToFirestore(activeProjectId, ws.id, wsData).catch(() => {});
         }
-      }, 100);
-      localStorage.setItem('nexus-active-project', activeProjectId);
+      }
+      // Update project metadata with activeTab and workspaceIds
+      if (projMeta) {
+        const updatedMeta = { ...projMeta, activeTab, workspaceIds: currentWorkspaces.map(ws => ws.id), lastModified: Date.now() };
+        saveProjectMeta(activeProjectId, updatedMeta);
+        if (isFirebaseConfigured()) {
+          saveProjectToFirestore(activeProjectId, updatedMeta).catch(() => {});
+        }
+      }
+      // Update in-memory projects
+      setProjects(prev => prev.map(p => p.id === activeProjectId
+        ? { ...p, workspaces: currentWorkspaces, activeTab, lastModified: Date.now() }
+        : p
+      ));
+      setSyncStatus('synced');
+    });
+    // Update meta with active project
+    const meta = loadMeta();
+    if (meta) {
+      saveMeta({ ...meta, activeProjectId });
     }
-  }, [workspaces, activeTab, nextId, reminders, tasks, taskGroups, initialized, activeProjectId]);
+    if (isFirebaseConfigured()) {
+      setSyncStatus('syncing');
+      saveUserMeta({ activeProjectId, defaultProjectId }).catch(() => {});
+    }
+  }, [workspaces, activeTab, initialized, activeProjectId]);
 
+  // (b) Task autosave (500ms): watches [tasks, taskGroups]
   useEffect(() => {
-    if (initialized && activeProjectId) {
-      setProjects(prev => {
-        const updated = prev.map(p => p.id === activeProjectId
-          ? { ...p, password: storedPassword }
-          : p
-        );
-        return updated;
-      });
-      // Debounced localStorage write (outside state updater)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        const currentProjects = projectsRef.current;
-        localStorage.setItem('nexus-app-state', JSON.stringify(currentProjects));
-        // Also save to Firestore (fire-and-forget)
+    if (!initialized || !activeProjectId) return;
+    const debouncedTaskSave = createDebouncedSaver(500);
+    debouncedTaskSave(() => {
+      const tasksData = { tasks, taskGroups };
+      saveTasks(activeProjectId, tasksData);
+      // Update lastModified on project metadata
+      const projMeta = loadProjectMeta(activeProjectId);
+      if (projMeta) {
+        const updatedMeta = { ...projMeta, lastModified: Date.now() };
+        saveProjectMeta(activeProjectId, updatedMeta);
+        if (isFirebaseConfigured()) {
+          saveProjectToFirestore(activeProjectId, updatedMeta).catch(() => {});
+        }
+      }
+      // Fire-and-forget Firestore save
+      if (isFirebaseConfigured()) {
+        setSyncStatus('syncing');
+        saveTasksToFirestore(activeProjectId, tasksData)
+          .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+          .catch(() => setSyncStatus('error'));
+      }
+      // Update in-memory projects
+      setProjects(prev => prev.map(p => p.id === activeProjectId
+        ? { ...p, tasks, taskGroups, lastModified: Date.now() }
+        : p
+      ));
+    });
+  }, [tasks, taskGroups, initialized, activeProjectId]);
+
+  // (c) Metadata autosave (200ms): watches [nextId, reminders]
+  useEffect(() => {
+    if (!initialized || !activeProjectId) return;
+    const debouncedMetaSave = createDebouncedSaver(200);
+    debouncedMetaSave(() => {
+      const projMeta = loadProjectMeta(activeProjectId);
+      if (projMeta) {
+        const updatedMeta = { ...projMeta, nextId, reminders, lastModified: Date.now() };
+        saveProjectMeta(activeProjectId, updatedMeta);
         if (isFirebaseConfigured()) {
           setSyncStatus('syncing');
-          saveProjects(currentProjects)
+          saveProjectToFirestore(activeProjectId, updatedMeta)
             .then((success) => setSyncStatus(success ? 'synced' : 'error'))
             .catch(() => setSyncStatus('error'));
         }
-      }, 100);
+      }
+      // Update in-memory projects
+      setProjects(prev => prev.map(p => p.id === activeProjectId
+        ? { ...p, nextId, reminders, lastModified: Date.now() }
+        : p
+      ));
+    });
+  }, [nextId, reminders, initialized, activeProjectId]);
+
+  // Password save effect
+  useEffect(() => {
+    if (!initialized || !activeProjectId) return;
+    setProjects(prev => prev.map(p => p.id === activeProjectId
+      ? { ...p, password: storedPassword }
+      : p
+    ));
+    const projMeta = loadProjectMeta(activeProjectId);
+    if (projMeta) {
+      const updatedMeta = { ...projMeta, password: storedPassword };
+      saveProjectMeta(activeProjectId, updatedMeta);
+      if (isFirebaseConfigured()) {
+        saveProjectToFirestore(activeProjectId, updatedMeta).catch(() => {});
+      }
     }
   }, [storedPassword, initialized, activeProjectId]);
-
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     setFocusedNodeId(null);
@@ -1981,10 +2093,19 @@ export default function WorkflowApp() {
   // --- Workspace (Tab) Operations ---
   const addWorkspace = () => {
     takeSnapshot();
-    const newId = `ws-${Date.now()}`;
+    const newId = generateId();
     setWorkspaces(prev => [...prev, { id: newId, name: `Map Phase ${prev.length + 1}`, nodes: [], edges: [], groups: [] }]);
     setActiveTab(newId);
     setTransform({ x: 0, y: 0, scale: 1 });
+    // Save workspace immediately and update project metadata
+    saveWorkspaceToLocal(activeProjectId, newId, { id: newId, name: `Map Phase ${workspaces.length + 1}`, nodes: [], edges: [], groups: [], pins: [], images: [], lastModified: Date.now() });
+    const projMeta = loadProjectMeta(activeProjectId);
+    if (projMeta) {
+      const updatedIds = [...(projMeta.workspaceIds || []), newId];
+      saveProjectMeta(activeProjectId, { ...projMeta, workspaceIds: updatedIds });
+      if (isFirebaseConfigured()) saveProjectToFirestore(activeProjectId, { ...projMeta, workspaceIds: updatedIds }).catch(() => {});
+    }
+    if (isFirebaseConfigured()) saveWorkspaceToFirestore(activeProjectId, newId, { id: newId, name: `Map Phase ${workspaces.length + 1}`, nodes: [], edges: [], groups: [], pins: [], images: [], lastModified: Date.now() }).catch(() => {});
   };
 
   const deleteWorkspace = (id, e) => {
@@ -2018,7 +2139,7 @@ export default function WorkflowApp() {
     takeSnapshot();
     const source = workspaces.find(w => w.id === wsId);
     if (!source) return;
-    const newWsId = `ws-${Date.now()}`;
+    const newWsId = generateId();
     let idCounter = nextId;
     const nodeIdMap = {};
     const groupIdMap = {};
@@ -2092,6 +2213,19 @@ export default function WorkflowApp() {
     setNextId(idCounter);
     setTransform({ x: 0, y: 0, scale: 1 });
 
+    // Save the new workspace to per-workspace keys and update project metadata
+    saveWorkspaceToLocal(activeProjectId, newWsId, {
+      id: newWsId, name: newWorkspace.name, nodes: newWorkspace.nodes || [], edges: newWorkspace.edges || [],
+      groups: newWorkspace.groups || [], pins: newWorkspace.pins || [], images: newWorkspace.images || [], lastModified: Date.now()
+    });
+    const projMeta = loadProjectMeta(activeProjectId);
+    if (projMeta) {
+      const updatedIds = [...(projMeta.workspaceIds || []), newWsId];
+      saveProjectMeta(activeProjectId, { ...projMeta, workspaceIds: updatedIds });
+      if (isFirebaseConfigured()) saveProjectToFirestore(activeProjectId, { ...projMeta, workspaceIds: updatedIds }).catch(() => {});
+    }
+    if (isFirebaseConfigured()) saveWorkspaceToFirestore(activeProjectId, newWsId, { id: newWsId, name: newWorkspace.name, nodes: newWorkspace.nodes || [], edges: newWorkspace.edges || [], groups: newWorkspace.groups || [], pins: newWorkspace.pins || [], images: newWorkspace.images || [], lastModified: Date.now() }).catch(() => {});
+
     // Duplicate tasks linked to pins in the source workspace
     if (Object.keys(pinIdMap).length > 0) {
       setTasks(prev => {
@@ -2157,10 +2291,10 @@ export default function WorkflowApp() {
       setProjectError('Password is required when protection is enabled.');
       return;
     }
-    const wsId = `ws-${Date.now()}`;
+    const wsId = generateId();
     const hashedPass = projectPasswordEnabled ? await hashPassword(projectPasswordInput.trim()) : '';
     const newProj = {
-      id: `proj-${Date.now()}`,
+      id: generateId(),
       name: projectNameInput.trim(),
       description: projectDescriptionInput.trim(),
       thumbnail: projectThumbnailInput,
@@ -2170,15 +2304,38 @@ export default function WorkflowApp() {
       activeTab: wsId,
       nextId: 10
     };
-    setProjects(prev => {
-      const updated = [...prev, newProj];
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
-      return updated;
+    // Write to per-workspace keys
+    saveProjectMeta(newProj.id, {
+      id: newProj.id,
+      name: newProj.name,
+      description: newProj.description,
+      password: newProj.password,
+      thumbnail: newProj.thumbnail,
+      lastModified: newProj.lastModified,
+      activeTab: wsId,
+      nextId: 10,
+      reminders: [],
+      workspaceIds: [wsId],
+      schemaVersion: 2
     });
+    saveWorkspaceToLocal(newProj.id, wsId, { id: wsId, name: 'Workspace 1', nodes: [], edges: [], groups: [], pins: [], images: [], lastModified: Date.now() });
+    saveTasks(newProj.id, { tasks: [], taskGroups: [] });
+    // Update cm-meta
+    const meta = loadMeta() || { activeProjectId, defaultProjectId, schemaVersion: 2 };
+    saveMeta(meta);
+    // Fire-and-forget Firestore
+    if (isFirebaseConfigured()) {
+      saveProjectToFirestore(newProj.id, { id: newProj.id, name: newProj.name, description: newProj.description, thumbnail: newProj.thumbnail, lastModified: newProj.lastModified, workspaceIds: [wsId], activeTab: wsId, nextId: 10, reminders: [] }).catch(() => {});
+      saveWorkspaceToFirestore(newProj.id, wsId, { id: wsId, name: 'Workspace 1', nodes: [], edges: [], groups: [], pins: [], images: [], lastModified: Date.now() }).catch(() => {});
+      saveTasksToFirestore(newProj.id, { tasks: [], taskGroups: [] }).catch(() => {});
+    }
+    setProjects(prev => [...prev, newProj]);
     // Handle default toggle
     if (projectDefaultToggle) {
       setDefaultProjectId(newProj.id);
-      localStorage.setItem('nexus-default-project', newProj.id);
+      const updatedMeta = { ...meta, defaultProjectId: newProj.id };
+      saveMeta(updatedMeta);
+      if (isFirebaseConfigured()) saveUserMeta({ activeProjectId, defaultProjectId: newProj.id }).catch(() => {});
     }
     setProjectError('');
     setProjectPanelMode('dashboard');
@@ -2198,19 +2355,33 @@ export default function WorkflowApp() {
       setProjectError('Incorrect.');
       return;
     }
-    // Save current project state
+    // Save current project state to per-workspace keys
     setProjects(prev => {
       const updated = prev.map(p => p.id === activeProjectId
         ? { ...p, workspaces, activeTab, nextId, tasks, taskGroups }
         : p
       );
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
-      // Also save to Firestore (fire-and-forget)
+      // Save current workspace data to per-workspace keys
+      for (const ws of workspaces) {
+        saveWorkspaceToLocal(activeProjectId, ws.id, {
+          id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+          groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+        });
+      }
+      saveTasks(activeProjectId, { tasks, taskGroups });
+      const projMeta = loadProjectMeta(activeProjectId);
+      if (projMeta) {
+        saveProjectMeta(activeProjectId, { ...projMeta, activeTab, nextId, workspaceIds: workspaces.map(ws => ws.id), lastModified: Date.now() });
+      }
+      // Fire-and-forget Firestore
       if (isFirebaseConfigured()) {
         setSyncStatus('syncing');
-        saveProjects(updated)
-          .then((success) => setSyncStatus(success ? 'synced' : 'error'))
-          .catch(() => setSyncStatus('error'));
+        for (const ws of workspaces) {
+          saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+        }
+        saveTasksToFirestore(activeProjectId, { tasks, taskGroups }).catch(() => {});
+        if (projMeta) saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab, nextId, workspaceIds: workspaces.map(ws => ws.id), lastModified: Date.now() }).catch(() => {});
+        setSyncStatus('synced');
       }
       return updated;
     });
@@ -2238,9 +2409,11 @@ export default function WorkflowApp() {
     setStoredPassword(target.password || '');
     setPasswordEnabled(!!target.password);
     setIsAuthenticated(true);
-    localStorage.setItem('nexus-active-project', targetId);
-    // Save active project to Firestore
-    if (isFirebaseConfigured()) saveActiveProject(targetId).catch(() => {});
+    // Update cm-meta with new active project
+    const meta = loadMeta() || { schemaVersion: 2 };
+    saveMeta({ ...meta, activeProjectId: targetId });
+    // Save to Firestore
+    if (isFirebaseConfigured()) saveUserMeta({ activeProjectId: targetId, defaultProjectId }).catch(() => {});
     setShowProjectPanel(false);
     setProjectPasswordInput('');
     setProjectError('');
@@ -2257,19 +2430,31 @@ export default function WorkflowApp() {
     const target = projectsRef.current.find(p => p.id === targetId);
     if (!target) return;
     const { workspaces: currentWs, activeTab: currentTab, nextId: currentNextId } = stateRef.current;
-    // Save current project state
+    // Save current project state to per-workspace keys
     setProjects(prev => {
       const updated = prev.map(p => p.id === activeProjectId
         ? { ...p, workspaces: currentWs, activeTab: currentTab, nextId: currentNextId }
         : p
       );
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
-      // Also save to Firestore (fire-and-forget)
+      // Save current workspace data to per-workspace keys
+      for (const ws of currentWs) {
+        saveWorkspaceToLocal(activeProjectId, ws.id, {
+          id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+          groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+        });
+      }
+      const projMeta = loadProjectMeta(activeProjectId);
+      if (projMeta) {
+        saveProjectMeta(activeProjectId, { ...projMeta, activeTab: currentTab, nextId: currentNextId, workspaceIds: currentWs.map(ws => ws.id), lastModified: Date.now() });
+      }
+      // Fire-and-forget Firestore
       if (isFirebaseConfigured()) {
         setSyncStatus('syncing');
-        saveProjects(updated)
-          .then((success) => setSyncStatus(success ? 'synced' : 'error'))
-          .catch(() => setSyncStatus('error'));
+        for (const ws of currentWs) {
+          saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+        }
+        if (projMeta) saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab: currentTab, nextId: currentNextId, workspaceIds: currentWs.map(ws => ws.id), lastModified: Date.now() }).catch(() => {});
+        setSyncStatus('synced');
       }
       return updated;
     });
@@ -2298,9 +2483,11 @@ export default function WorkflowApp() {
       setPasswordEnabled(!!target.password);
     }
     setIsAuthenticated(true);
-    localStorage.setItem('nexus-active-project', targetId);
-    // Save active project to Firestore
-    if (isFirebaseConfigured()) saveActiveProject(targetId).catch(() => {});
+    // Update cm-meta with new active project
+    const meta = loadMeta() || { schemaVersion: 2 };
+    saveMeta({ ...meta, activeProjectId: targetId });
+    // Save to Firestore
+    if (isFirebaseConfigured()) saveUserMeta({ activeProjectId: targetId, defaultProjectId }).catch(() => {});
     setShowProjectPanel(false);
     setProjectPasswordInput('');
     setProjectError('');
@@ -2349,18 +2536,29 @@ export default function WorkflowApp() {
         ? { ...p, name: projectNameInput.trim(), description: projectDescriptionInput.trim(), thumbnail: projectThumbnailInput, password: newPass, lastModified: Date.now() }
         : p
       );
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
+
+      // Save to per-workspace keys
+      const projMeta = loadProjectMeta(editingProjectId);
+      if (projMeta) {
+        const updatedMeta = { ...projMeta, name: projectNameInput.trim(), description: projectDescriptionInput.trim(), thumbnail: projectThumbnailInput, password: newPass, lastModified: Date.now() };
+        saveProjectMeta(editingProjectId, updatedMeta);
+        if (isFirebaseConfigured()) saveProjectToFirestore(editingProjectId, updatedMeta).catch(() => {});
+      }
 
       // Handle default toggle inside updater to avoid stale reference
       if (projectDefaultToggle) {
         setDefaultProjectId(editingProjectId);
-        localStorage.setItem('nexus-default-project', editingProjectId);
+        const meta = loadMeta() || { schemaVersion: 2 };
+        saveMeta({ ...meta, defaultProjectId: editingProjectId });
+        if (isFirebaseConfigured()) saveUserMeta({ activeProjectId, defaultProjectId: editingProjectId }).catch(() => {});
       } else if (defaultProjectId === editingProjectId) {
         // Find fallback: first project in prev that is not the one being edited
         const fallback = prev.find(p => p.id !== editingProjectId);
         const fallbackId = fallback ? fallback.id : prev[0].id;
         setDefaultProjectId(fallbackId);
-        localStorage.setItem('nexus-default-project', fallbackId);
+        const meta = loadMeta() || { schemaVersion: 2 };
+        saveMeta({ ...meta, defaultProjectId: fallbackId });
+        if (isFirebaseConfigured()) saveUserMeta({ activeProjectId, defaultProjectId: fallbackId }).catch(() => {});
       }
 
       return updated;
@@ -2390,7 +2588,7 @@ export default function WorkflowApp() {
     const cloned = JSON.parse(JSON.stringify(target));
     // Generate new unique workspace IDs and reassign all object workspaceIds
     const newWorkspaces = (cloned.workspaces || []).map(ws => {
-      const newWsId = `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const newWsId = generateId();
       return {
         ...ws,
         id: newWsId,
@@ -2401,20 +2599,40 @@ export default function WorkflowApp() {
         images: (ws.images || []).map(img => ({ ...img, workspaceId: newWsId }))
       };
     });
+    const newProjId = generateId();
     const newProj = {
       ...cloned,
-      id: `proj-${Date.now()}`,
+      id: newProjId,
       name: `${target.name} (Copy)`,
       password: '',
       lastModified: Date.now(),
       workspaces: newWorkspaces,
       activeTab: newWorkspaces.length > 0 ? newWorkspaces[0].id : ''
     };
-    setProjects(prev => {
-      const updated = [...prev, newProj];
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
-      return updated;
+    // Write to per-workspace keys
+    const wsIds = newWorkspaces.map(ws => ws.id);
+    saveProjectMeta(newProjId, {
+      id: newProjId, name: newProj.name, description: newProj.description || '', password: '',
+      thumbnail: newProj.thumbnail || null, lastModified: newProj.lastModified,
+      activeTab: newProj.activeTab, nextId: newProj.nextId || 10, reminders: newProj.reminders || [],
+      workspaceIds: wsIds, schemaVersion: 2
     });
+    for (const ws of newWorkspaces) {
+      saveWorkspaceToLocal(newProjId, ws.id, {
+        id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+        groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+      });
+    }
+    saveTasks(newProjId, { tasks: newProj.tasks || [], taskGroups: newProj.taskGroups || [] });
+    // Fire-and-forget Firestore
+    if (isFirebaseConfigured()) {
+      saveProjectToFirestore(newProjId, { id: newProjId, name: newProj.name, description: newProj.description || '', thumbnail: newProj.thumbnail || null, lastModified: newProj.lastModified, workspaceIds: wsIds, activeTab: newProj.activeTab, nextId: newProj.nextId || 10, reminders: newProj.reminders || [] }).catch(() => {});
+      for (const ws of newWorkspaces) {
+        saveWorkspaceToFirestore(newProjId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+      }
+      saveTasksToFirestore(newProjId, { tasks: newProj.tasks || [], taskGroups: newProj.taskGroups || [] }).catch(() => {});
+    }
+    setProjects(prev => [...prev, newProj]);
     setCardMenuOpenId(null);
   };
 
@@ -2437,12 +2655,29 @@ export default function WorkflowApp() {
 
   // Export all projects as a full backup
   const exportAllData = () => {
+    // Assemble full backup from per-workspace storage
+    const exportProjects = projects.map(proj => {
+      // Gather workspace data from per-workspace keys
+      const projMetaLocal = loadProjectMeta(proj.id);
+      const wsIds = projMetaLocal ? (projMetaLocal.workspaceIds || []) : (proj.workspaces || []).map(ws => ws.id);
+      const assembledWorkspaces = wsIds.map(wsId => {
+        const wsData = loadWorkspaceFromLocal(proj.id, wsId);
+        return wsData || (proj.workspaces || []).find(ws => ws.id === wsId) || { id: wsId, name: 'Workspace', nodes: [], edges: [], groups: [] };
+      });
+      const tasksData = loadTasks(proj.id);
+      return {
+        ...proj,
+        workspaces: assembledWorkspaces,
+        tasks: tasksData ? tasksData.tasks : (proj.tasks || []),
+        taskGroups: tasksData ? tasksData.taskGroups : (proj.taskGroups || [])
+      };
+    });
     const backupData = {
       type: 'thoughtflow-backup',
-      version: 1,
+      version: 2,
       exportDate: new Date().toISOString(),
       defaultProjectId,
-      projects
+      projects: exportProjects
     };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2488,12 +2723,22 @@ export default function WorkflowApp() {
     }
     const updated = projects.filter(p => p.id !== targetId);
     setProjects(updated);
-    localStorage.setItem('nexus-app-state', JSON.stringify(updated));
+    // Remove per-workspace keys for the deleted project
+    const deletedProjMeta = loadProjectMeta(targetId);
+    if (deletedProjMeta && deletedProjMeta.workspaceIds) {
+      for (const wsId of deletedProjMeta.workspaceIds) {
+        localStorage.removeItem(`cm-ws-${targetId}-${wsId}`);
+      }
+    }
+    localStorage.removeItem(`cm-proj-${targetId}`);
+    localStorage.removeItem(`cm-tasks-${targetId}`);
     // If deleting the default project, reassign default
     if (targetId === defaultProjectId) {
       const newDefault = updated[0].id;
       setDefaultProjectId(newDefault);
-      localStorage.setItem('nexus-default-project', newDefault);
+      const meta = loadMeta() || { schemaVersion: 2 };
+      saveMeta({ ...meta, defaultProjectId: newDefault });
+      if (isFirebaseConfigured()) saveUserMeta({ activeProjectId, defaultProjectId: newDefault }).catch(() => {});
     }
     // If deleting active project, switch to first available
     if (targetId === activeProjectId) {
@@ -2514,7 +2759,9 @@ export default function WorkflowApp() {
       setStoredPassword(next.password || '');
       setPasswordEnabled(!!next.password);
       setIsAuthenticated(false);
-      localStorage.setItem('nexus-active-project', next.id);
+      const meta = loadMeta() || { schemaVersion: 2 };
+      saveMeta({ ...meta, activeProjectId: next.id });
+      if (isFirebaseConfigured()) saveUserMeta({ activeProjectId: next.id, defaultProjectId }).catch(() => {});
     }
     setShowProjectPanel(false);
     setProjectPasswordInput('');
@@ -2552,9 +2799,15 @@ export default function WorkflowApp() {
     setPasswordEnabled(!!newPass);
     setProjects(prev => {
       const updated = prev.map(p => p.id === activeProjectId ? { ...p, password: newPass } : p);
-      localStorage.setItem('nexus-app-state', JSON.stringify(updated));
       return updated;
     });
+    // Save password to per-workspace key and Firestore
+    const projMeta = loadProjectMeta(activeProjectId);
+    if (projMeta) {
+      const updatedMeta = { ...projMeta, password: newPass };
+      saveProjectMeta(activeProjectId, updatedMeta);
+      if (isFirebaseConfigured()) saveProjectToFirestore(activeProjectId, updatedMeta).catch(() => {});
+    }
     setShowProjectPanel(false);
     setProjectPasswordInput('');
     setProjectPasswordConfirm('');
@@ -2715,9 +2968,37 @@ export default function WorkflowApp() {
             setProjects(migratedProjects);
             setDefaultProjectId(restoredDefault);
             setActiveProjectId(restoredDefault);
-            localStorage.setItem('nexus-app-state', JSON.stringify(migratedProjects));
-            localStorage.setItem('nexus-active-project', restoredDefault);
-            localStorage.setItem('nexus-default-project', restoredDefault);
+
+            // Decompose into per-workspace keys
+            for (const proj of migratedProjects) {
+              const wsIds = (proj.workspaces || []).map(ws => ws.id);
+              saveProjectMeta(proj.id, {
+                id: proj.id, name: proj.name || 'Untitled', description: proj.description || '',
+                password: proj.password || null, thumbnail: proj.thumbnail || null,
+                lastModified: proj.lastModified || Date.now(), activeTab: proj.activeTab || wsIds[0] || '',
+                nextId: proj.nextId || 1, reminders: proj.reminders || [],
+                workspaceIds: wsIds, schemaVersion: 2
+              });
+              for (const ws of (proj.workspaces || [])) {
+                saveWorkspaceToLocal(proj.id, ws.id, {
+                  id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [],
+                  groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now()
+                });
+              }
+              saveTasks(proj.id, { tasks: proj.tasks || [], taskGroups: proj.taskGroups || [] });
+              // Fire-and-forget Firestore sync
+              if (isFirebaseConfigured()) {
+                saveProjectToFirestore(proj.id, { id: proj.id, name: proj.name || 'Untitled', description: proj.description || '', thumbnail: proj.thumbnail || null, lastModified: proj.lastModified || Date.now(), workspaceIds: wsIds, activeTab: proj.activeTab || wsIds[0] || '', nextId: proj.nextId || 1, reminders: proj.reminders || [] }).catch(() => {});
+                for (const ws of (proj.workspaces || [])) {
+                  saveWorkspaceToFirestore(proj.id, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+                }
+                saveTasksToFirestore(proj.id, { tasks: proj.tasks || [], taskGroups: proj.taskGroups || [] }).catch(() => {});
+              }
+            }
+            // Update cm-meta
+            saveMeta({ activeProjectId: restoredDefault, defaultProjectId: restoredDefault, schemaVersion: 2 });
+            if (isFirebaseConfigured()) saveUserMeta({ activeProjectId: restoredDefault, defaultProjectId: restoredDefault }).catch(() => {});
+
             const defaultProj = migratedProjects.find(p => p.id === restoredDefault) || migratedProjects[0];
             if (defaultProj) {
               setWorkspaces(defaultProj.workspaces || []);
@@ -2733,7 +3014,6 @@ export default function WorkflowApp() {
           } catch (restoreErr) {
             // Rollback to previous state
             setProjects(previousProjects);
-            localStorage.setItem('nexus-app-state', JSON.stringify(previousProjects));
             setErrorMessage("Import failed. Previous data has been restored.");
           }
         } else {
@@ -4804,14 +5084,19 @@ export default function WorkflowApp() {
             }
             onClick={() => {
               if (syncStatus === 'error' && isFirebaseConfigured()) {
-                const currentProjects = projectsRef.current;
                 setSyncStatus('syncing');
-                saveProjects(currentProjects)
+                // Sync current project state to Firestore
+                const projMeta = loadProjectMeta(activeProjectId);
+                if (projMeta) {
+                  saveProjectToFirestore(activeProjectId, projMeta).catch(() => {});
+                }
+                for (const ws of workspaces) {
+                  saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+                }
+                saveTasksToFirestore(activeProjectId, { tasks, taskGroups }).catch(() => {});
+                saveUserMeta({ activeProjectId, defaultProjectId })
                   .then((success) => setSyncStatus(success ? 'synced' : 'error'))
                   .catch(() => setSyncStatus('error'));
-                saveActiveProject(activeProjectId).catch(() => {});
-                const defId = localStorage.getItem('nexus-default-project');
-                if (defId) saveDefaultProject(defId).catch(() => {});
               }
             }}
           >

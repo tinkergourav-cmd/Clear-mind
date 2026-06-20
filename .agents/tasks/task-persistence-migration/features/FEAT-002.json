@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Rewire App.jsx to use the new persistenceService for all read/write operations. Replace the monolithic autosave with 3 independent debounced useEffects. Update initialization, project CRUD, import/export, and project switching to use the per-workspace persistence API. Maintain backward compatibility for old export formats.",
+  "status": "in_progress",
+  "steps": [
+    "1. UPDATE IMPORTS in src/App.jsx: Add import of key functions from './persistenceService' (initializePersistence, saveProjectMeta, saveWorkspace, saveTasks, saveMeta, loadWorkspace, loadTasks, generateId, createDebouncedSaver, detectMigrationNeeded). Keep existing firebaseService imports temporarily for backward compat during transition (they can be removed once all paths use the new service).",
+    "2. REPLACE INITIALIZATION (lines ~656-900): Replace the existing init useEffect body with a call to initializePersistence(). Map the returned data structure to the existing React state variables (projects/setProjects can become a metadata map, workspaces/setWorkspaces loaded from per-workspace data, tasks from per-project tasks, etc.). Keep the password hashing migration logic. Keep the workspaceValidator calls. Keep the reminders loading. The initialization should: detect migration, run it if needed, then load via new API. Maintain the existing Firestore-first-then-localStorage fallback order. Keep setSyncStatus updates.",
+    "3. REPLACE AUTOSAVE (lines ~1060-1130): Remove the single debounced useEffect that watches [workspaces, activeTab, nextId, reminders, tasks, taskGroups]. Replace with 3 independent useEffects using createDebouncedSaver: (a) Workspace autosave (300ms): watches [workspaces, activeTab] - saves only the changed workspace document(s) to localStorage (cm-ws-{projectId}-{workspaceId}) and Firestore (saveWorkspaceToFirestore). Track which workspace changed by comparing with a ref. (b) Task autosave (500ms): watches [tasks, taskGroups] - saves cm-tasks-{projectId} and saveTasksToFirestore. (c) Metadata autosave (200ms): watches [nextId, reminders] - saves cm-proj-{projectId} and saveProjectToFirestore. All three update the lastModified timestamp on the project metadata. All three set syncStatus. Keep the projectsRef pattern for accessing latest state in timeouts.",
+    "4. UPDATE PROJECT CREATION (createProject function around line 2146): Use generateId() for new project IDs and workspace IDs instead of Date.now(). Write new project to cm-proj-{id}, write initial workspace to cm-ws-{id}-{wsId}, write empty tasks to cm-tasks-{id}, update cm-meta. Also fire-and-forget write to Firestore. Keep the existing projects state array update for in-memory consistency.",
+    "5. UPDATE PROJECT DELETION (deleteProject function around line 2487): Remove cm-proj-{id}, all cm-ws-{id}-* keys, cm-tasks-{id} from localStorage. Also delete from Firestore (project doc and subcollections). Update cm-meta if deleting default/active project.",
+    "6. UPDATE PROJECT SWITCHING (switchProject around line 2192, cycleToProject around line 2256): Save current project state to new per-workspace keys before switching. Load target project's workspaces from cm-ws-{targetId}-{wsId} keys (or from Firestore if localStorage miss). Update cm-meta with new activeProjectId. Remove the full blob writes (localStorage.setItem('nexus-app-state', JSON.stringify(updated))).",
+    "7. UPDATE WORKSPACE ADD/DUPLICATE (addWorkspace around line 1982, duplicateWorkspace around line 2019): Use generateId() for new workspace IDs. After creating workspace, immediately write to cm-ws-{projectId}-{newWsId} and update project metadata's workspaceIds array.",
+    "8. UPDATE EXPORT (exportAllData around line 2437): Assemble full backup from per-workspace storage. For each project, gather metadata from cm-proj-{id}, workspaces from cm-ws-{id}-{wsId} keys, tasks from cm-tasks-{id}. Construct the same export format (type: 'thoughtflow-backup', version: 2, with projects array containing assembled project objects). Keep backward-compatible structure.",
+    "9. UPDATE IMPORT (importAllData around line 2675): After parsing and validating the imported data, decompose into per-workspace keys using the new API. Handle both v1 (old format with inline workspaces) and v2 (new format). Write cm-proj-{id}, cm-ws-{id}-{wsId}, cm-tasks-{id} for each imported project. Update cm-meta. Fire-and-forget sync to Firestore.",
+    "10. UPDATE PASSWORD CHANGE (changeProjectPassword around line ~2540): Save password to cm-proj-{projectId} and sync to Firestore project doc.",
+    "11. REMOVE LEGACY BLOB WRITES: Remove all remaining localStorage.setItem('nexus-app-state', ...) calls that occur in project creation, deletion, switching, import, and password change. The only remaining reference to 'nexus-app-state' should be in the migration detection code and the initialization fallback. Remove localStorage.setItem('nexus-active-project', ...) and localStorage.setItem('nexus-default-project', ...) calls - these are replaced by cm-meta.",
+    "12. KEEP BACKWARD COMPAT: Do NOT remove the ability to read 'nexus-app-state' during initialization (it is the migration source and final fallback). Keep the 'nexus-full-backup' type recognition in importAllData. Keep workspaceValidator.js calls intact (it receives workspace arrays which remain the same shape).",
+    "13. Run `npm run build` and fix any compilation errors."
+  ],
+  "acceptance_criteria": [
+    "App.jsx imports and uses persistenceService functions for all persistence operations",
+    "Three independent debounced autosave useEffects exist (workspace 300ms, tasks 500ms, metadata 200ms)",
+    "New projects and workspaces use UUID-based IDs via generateId()",
+    "Project switching saves/loads via per-workspace keys instead of full blob",
+    "Import/export still works with both v1 and v2 formats",
+    "No remaining writes to 'nexus-app-state' localStorage key (reads allowed for migration/fallback)",
+    "workspaceValidator.js usage is preserved",
+    "Build succeeds: `npm run build` exits 0"
+  ],
+  "verification": [
+    "Run `npm run build` in /projects/sandbox/Clear-mind and confirm it exits 0 with no errors"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
