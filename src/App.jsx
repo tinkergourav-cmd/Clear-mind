@@ -35,6 +35,8 @@ import {
   detectMigrationNeeded,
   migrateFromBlobToPerWorkspace,
   saveWorkspaceToFirestore,
+  deleteWorkspaceFromFirestore,
+  removeWorkspaceLocal,
   saveTasksToFirestore,
   saveProjectToFirestore,
   loadProjectFromFirestore,
@@ -427,6 +429,11 @@ export default function WorkflowApp() {
   const partialImportInputRef = useRef(null);
   const animTimerRef = useRef(null);
 
+  // --- Stable debounced saver instances (created once, reused across re-renders) ---
+  const debouncedWorkspaceSaverRef = useRef(createDebouncedSaver(300));
+  const debouncedTaskSaverRef = useRef(createDebouncedSaver(500));
+  const debouncedMetaSaverRef = useRef(createDebouncedSaver(200));
+
   // --- History (Undo/Redo) States ---
   const pastRef = useRef([]);
   const futureRef = useRef([]);
@@ -693,43 +700,87 @@ export default function WorkflowApp() {
         }
 
         // Try loading from Firestore first (primary data source)
+        // Priority: new subcollection format -> legacy single-document format -> localStorage
         let firestoreProjects = null;
         let firestoreActiveId = null;
         let firestoreDefaultId = null;
         if (isFirebaseConfigured()) {
           setSyncStatus('syncing');
           try {
-            firestoreProjects = await loadLegacyProjects();
-            firestoreActiveId = await loadLegacyActiveProject();
-            firestoreDefaultId = await loadLegacyDefaultProject();
-            if (firestoreProjects) {
-              // --- Timestamp comparison: preserve newer local edits ---
-              const localRaw = localStorage.getItem('nexus-app-state');
-              let useLocal = false;
-              if (localRaw) {
-                try {
-                  const localProjects = JSON.parse(localRaw);
-                  if (Array.isArray(localProjects) && localProjects.length > 0) {
-                    const getNewestTimestamp = (arr) => arr.reduce((max, p) => Math.max(max, p.lastModified || 0), 0);
-                    const localNewest = getNewestTimestamp(localProjects);
-                    const firestoreNewest = getNewestTimestamp(firestoreProjects);
-                    if (localNewest > firestoreNewest) {
-                      console.info('[Firebase] Local data is newer than cloud data. Keeping local edits and syncing up.');
-                      useLocal = true;
-                      firestoreProjects = null;
-                      firestoreActiveId = null;
-                      firestoreDefaultId = null;
-                      saveLegacyProjects(localProjects).catch(() => {});
-                    }
+            // First try the new subcollection format (userMeta + project docs + workspace subcollections)
+            const userMeta = await loadUserMeta();
+            if (userMeta && userMeta.activeProjectId) {
+              const projectMeta = await loadProjectFromFirestore(userMeta.activeProjectId);
+              if (projectMeta) {
+                // New format exists - load workspaces from subcollections
+                const workspaceIds = projectMeta.workspaceIds || [];
+                const loadedWorkspaces = [];
+                for (const wsId of workspaceIds) {
+                  const wsData = await loadWorkspaceFromFirestore(userMeta.activeProjectId, wsId);
+                  if (wsData) loadedWorkspaces.push(wsData);
+                }
+                const tasksData = await loadTasksFromFirestore(userMeta.activeProjectId);
+
+                // Reconstruct a projects array entry for backward compat with init code below
+                const reconstructedProject = {
+                  ...projectMeta,
+                  workspaces: loadedWorkspaces.length > 0 ? loadedWorkspaces : undefined,
+                  tasks: tasksData ? (tasksData.tasks || []) : [],
+                  taskGroups: tasksData ? (tasksData.taskGroups || []) : []
+                };
+
+                firestoreProjects = [reconstructedProject];
+                firestoreActiveId = userMeta.activeProjectId;
+                firestoreDefaultId = userMeta.defaultProjectId || userMeta.activeProjectId;
+
+                // Check if local data is newer
+                const localMeta = loadMeta();
+                if (localMeta && localMeta.activeProjectId) {
+                  const localProjMeta = loadProjectMeta(localMeta.activeProjectId);
+                  if (localProjMeta && (localProjMeta.lastModified || 0) > (projectMeta.lastModified || 0)) {
+                    console.info('[Firebase] Local data is newer than cloud subcollection data. Keeping local edits.');
+                    firestoreProjects = null;
+                    firestoreActiveId = null;
+                    firestoreDefaultId = null;
                   }
-                } catch (parseErr) {
-                  // If localStorage is corrupted, just use Firestore data
+                }
+
+                if (firestoreProjects) {
+                  setSyncStatus('synced');
                 }
               }
-              setSyncStatus('synced');
-            } else {
-              setSyncStatus('synced');
             }
+
+            // If new format did not yield data, fall back to legacy single-document format
+            if (!firestoreProjects) {
+              firestoreProjects = await loadLegacyProjects();
+              firestoreActiveId = await loadLegacyActiveProject();
+              firestoreDefaultId = await loadLegacyDefaultProject();
+              if (firestoreProjects) {
+                // --- Timestamp comparison: preserve newer local edits ---
+                const localRaw = localStorage.getItem('nexus-app-state');
+                if (localRaw) {
+                  try {
+                    const localProjects = JSON.parse(localRaw);
+                    if (Array.isArray(localProjects) && localProjects.length > 0) {
+                      const getNewestTimestamp = (arr) => arr.reduce((max, p) => Math.max(max, p.lastModified || 0), 0);
+                      const localNewest = getNewestTimestamp(localProjects);
+                      const firestoreNewest = getNewestTimestamp(firestoreProjects);
+                      if (localNewest > firestoreNewest) {
+                        console.info('[Firebase] Local data is newer than cloud data. Keeping local edits and syncing up.');
+                        firestoreProjects = null;
+                        firestoreActiveId = null;
+                        firestoreDefaultId = null;
+                        saveLegacyProjects(localProjects).catch(() => {});
+                      }
+                    }
+                  } catch (parseErr) {
+                    // If localStorage is corrupted, just use Firestore data
+                  }
+                }
+              }
+            }
+            setSyncStatus('synced');
           } catch (e) {
             console.warn('[Firebase] Could not load from Firestore, falling back to localStorage:', e);
             setSyncStatus('error');
@@ -1120,8 +1171,7 @@ export default function WorkflowApp() {
   // (a) Workspace autosave (300ms): watches [workspaces, activeTab]
   useEffect(() => {
     if (!initialized || !activeProjectId) return;
-    const debouncedWorkspaceSave = createDebouncedSaver(300);
-    debouncedWorkspaceSave(() => {
+    debouncedWorkspaceSaverRef.current(() => {
       const currentWorkspaces = workspaces;
       const projMeta = loadProjectMeta(activeProjectId);
       const workspaceIds = projMeta ? (projMeta.workspaceIds || []) : currentWorkspaces.map(ws => ws.id);
@@ -1148,7 +1198,9 @@ export default function WorkflowApp() {
         const updatedMeta = { ...projMeta, activeTab, workspaceIds: currentWorkspaces.map(ws => ws.id), lastModified: Date.now() };
         saveProjectMeta(activeProjectId, updatedMeta);
         if (isFirebaseConfigured()) {
-          saveProjectToFirestore(activeProjectId, updatedMeta).catch(() => {});
+          saveProjectToFirestore(activeProjectId, updatedMeta)
+            .then((success) => setSyncStatus(success ? 'synced' : 'error'))
+            .catch(() => setSyncStatus('error'));
         }
       }
       // Update in-memory projects
@@ -1156,7 +1208,7 @@ export default function WorkflowApp() {
         ? { ...p, workspaces: currentWorkspaces, activeTab, lastModified: Date.now() }
         : p
       ));
-      setSyncStatus('synced');
+      if (!isFirebaseConfigured()) setSyncStatus('synced');
     });
     // Update meta with active project
     const meta = loadMeta();
@@ -1167,13 +1219,13 @@ export default function WorkflowApp() {
       setSyncStatus('syncing');
       saveUserMeta({ activeProjectId, defaultProjectId }).catch(() => {});
     }
+    return () => debouncedWorkspaceSaverRef.current.cancel();
   }, [workspaces, activeTab, initialized, activeProjectId]);
 
   // (b) Task autosave (500ms): watches [tasks, taskGroups]
   useEffect(() => {
     if (!initialized || !activeProjectId) return;
-    const debouncedTaskSave = createDebouncedSaver(500);
-    debouncedTaskSave(() => {
+    debouncedTaskSaverRef.current(() => {
       const tasksData = { tasks, taskGroups };
       saveTasks(activeProjectId, tasksData);
       // Update lastModified on project metadata
@@ -1198,13 +1250,13 @@ export default function WorkflowApp() {
         : p
       ));
     });
+    return () => debouncedTaskSaverRef.current.cancel();
   }, [tasks, taskGroups, initialized, activeProjectId]);
 
   // (c) Metadata autosave (200ms): watches [nextId, reminders]
   useEffect(() => {
     if (!initialized || !activeProjectId) return;
-    const debouncedMetaSave = createDebouncedSaver(200);
-    debouncedMetaSave(() => {
+    debouncedMetaSaverRef.current(() => {
       const projMeta = loadProjectMeta(activeProjectId);
       if (projMeta) {
         const updatedMeta = { ...projMeta, nextId, reminders, lastModified: Date.now() };
@@ -1222,6 +1274,7 @@ export default function WorkflowApp() {
         : p
       ));
     });
+    return () => debouncedMetaSaverRef.current.cancel();
   }, [nextId, reminders, initialized, activeProjectId]);
 
   // Password save effect
@@ -2129,6 +2182,12 @@ export default function WorkflowApp() {
       }
     }
 
+    // Remove from localStorage and Firestore
+    removeWorkspaceLocal(activeProjectId, id);
+    if (isFirebaseConfigured()) {
+      deleteWorkspaceFromFirestore(activeProjectId, id).catch(() => {});
+    }
+
     setWorkspaces(prev => prev.filter(w => w.id !== id));
     if (activeTab === id) setActiveTab(workspaces.find(w => w.id !== id).id);
   };
@@ -2379,12 +2438,15 @@ export default function WorkflowApp() {
       // Fire-and-forget Firestore
       if (isFirebaseConfigured()) {
         setSyncStatus('syncing');
+        const firestorePromises = [];
         for (const ws of workspaces) {
-          saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+          firestorePromises.push(saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }));
         }
-        saveTasksToFirestore(activeProjectId, { tasks, taskGroups }).catch(() => {});
-        if (projMeta) saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab, nextId, workspaceIds: workspaces.map(ws => ws.id), lastModified: Date.now() }).catch(() => {});
-        setSyncStatus('synced');
+        firestorePromises.push(saveTasksToFirestore(activeProjectId, { tasks, taskGroups }));
+        if (projMeta) firestorePromises.push(saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab, nextId, workspaceIds: workspaces.map(ws => ws.id), lastModified: Date.now() }));
+        Promise.all(firestorePromises)
+          .then((results) => setSyncStatus(results.every(Boolean) ? 'synced' : 'error'))
+          .catch(() => setSyncStatus('error'));
       }
       return updated;
     });
@@ -2453,11 +2515,14 @@ export default function WorkflowApp() {
       // Fire-and-forget Firestore
       if (isFirebaseConfigured()) {
         setSyncStatus('syncing');
+        const firestorePromises = [];
         for (const ws of currentWs) {
-          saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }).catch(() => {});
+          firestorePromises.push(saveWorkspaceToFirestore(activeProjectId, ws.id, { id: ws.id, name: ws.name || 'Workspace', nodes: ws.nodes || [], edges: ws.edges || [], groups: ws.groups || [], pins: ws.pins || [], images: ws.images || [], lastModified: Date.now() }));
         }
-        if (projMeta) saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab: currentTab, nextId: currentNextId, workspaceIds: currentWs.map(ws => ws.id), lastModified: Date.now() }).catch(() => {});
-        setSyncStatus('synced');
+        if (projMeta) firestorePromises.push(saveProjectToFirestore(activeProjectId, { ...projMeta, activeTab: currentTab, nextId: currentNextId, workspaceIds: currentWs.map(ws => ws.id), lastModified: Date.now() }));
+        Promise.all(firestorePromises)
+          .then((results) => setSyncStatus(results.every(Boolean) ? 'synced' : 'error'))
+          .catch(() => setSyncStatus('error'));
       }
       return updated;
     });

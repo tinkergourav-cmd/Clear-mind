@@ -165,10 +165,28 @@ export function migrateFromBlobToPerWorkspace() {
     const projects = Array.isArray(parsed) ? parsed : (parsed.projects || []);
 
     // Set migration status to in-progress
-    localStorage.setItem(KEY_MIGRATION_STATUS, JSON.stringify({
-      status: 'in-progress',
-      startedAt
-    }));
+    try {
+      localStorage.setItem(KEY_MIGRATION_STATUS, JSON.stringify({
+        status: 'in-progress',
+        startedAt
+      }));
+    } catch (quotaErr) {
+      // Cannot even write status - abort immediately
+      return { success: false, projectCount: 0, workspaceCount: 0, errors: ['QuotaExceededError: Cannot write migration status - localStorage is full'] };
+    }
+
+    // Helper to safely write to localStorage, aborting on quota errors
+    function safeSetItem(key, value) {
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+          throw e; // Re-throw quota errors to abort migration
+        }
+        throw e; // Re-throw other errors too
+      }
+    }
 
     // Migrate each project
     for (const project of projects) {
@@ -196,7 +214,7 @@ export function migrateFromBlobToPerWorkspace() {
           workspaceIds,
           schemaVersion: SCHEMA_VERSION
         };
-        localStorage.setItem(KEY_PROJECT_PREFIX + projectId, JSON.stringify(projectMeta));
+        safeSetItem(KEY_PROJECT_PREFIX + projectId, JSON.stringify(projectMeta));
         projectCount++;
 
         // Write each workspace
@@ -218,9 +236,12 @@ export function migrateFromBlobToPerWorkspace() {
               images: ws.images || [],
               lastModified: ws.lastModified || Date.now()
             };
-            localStorage.setItem(KEY_WORKSPACE_PREFIX + projectId + '-' + wsId, JSON.stringify(wsData));
+            safeSetItem(KEY_WORKSPACE_PREFIX + projectId + '-' + wsId, JSON.stringify(wsData));
             workspaceCount++;
           } catch (wsErr) {
+            if (wsErr.name === 'QuotaExceededError' || wsErr.code === 22 || wsErr.code === 1014) {
+              throw wsErr; // Propagate quota errors to abort
+            }
             errors.push(`Failed to write workspace ${ws.id} in project ${projectId}: ${wsErr.message}`);
           }
         }
@@ -231,11 +252,27 @@ export function migrateFromBlobToPerWorkspace() {
             tasks: project.tasks || [],
             taskGroups: project.taskGroups || []
           };
-          localStorage.setItem(KEY_TASKS_PREFIX + projectId, JSON.stringify(tasksData));
+          safeSetItem(KEY_TASKS_PREFIX + projectId, JSON.stringify(tasksData));
         } catch (taskErr) {
+          if (taskErr.name === 'QuotaExceededError' || taskErr.code === 22 || taskErr.code === 1014) {
+            throw taskErr; // Propagate quota errors to abort
+          }
           errors.push(`Failed to write tasks for project ${projectId}: ${taskErr.message}`);
         }
       } catch (projErr) {
+        if (projErr.name === 'QuotaExceededError' || projErr.code === 22 || projErr.code === 1014) {
+          // Quota exceeded - abort migration and reset status to failed
+          try {
+            localStorage.setItem(KEY_MIGRATION_STATUS, JSON.stringify({
+              status: 'failed',
+              startedAt,
+              failedAt: Date.now(),
+              reason: 'QuotaExceededError'
+            }));
+          } catch { /* Cannot even write status - nothing more we can do */ }
+          errors.push(`Migration aborted: localStorage quota exceeded while writing project ${project.id || 'unknown'}`);
+          return { success: false, projectCount, workspaceCount, errors };
+        }
         errors.push(`Failed to migrate project ${project.id || 'unknown'}: ${projErr.message}`);
       }
     }
@@ -244,18 +281,32 @@ export function migrateFromBlobToPerWorkspace() {
     const activeProjectId = localStorage.getItem(LEGACY_ACTIVE_KEY) || (projects[0] && projects[0].id) || null;
     const defaultProjectId = localStorage.getItem(LEGACY_DEFAULT_KEY) || activeProjectId;
 
-    localStorage.setItem(KEY_META, JSON.stringify({
-      activeProjectId,
-      defaultProjectId,
-      schemaVersion: SCHEMA_VERSION
-    }));
+    try {
+      safeSetItem(KEY_META, JSON.stringify({
+        activeProjectId,
+        defaultProjectId,
+        schemaVersion: SCHEMA_VERSION
+      }));
 
-    // Mark migration complete
-    localStorage.setItem(KEY_MIGRATION_STATUS, JSON.stringify({
-      status: 'completed',
-      startedAt,
-      completedAt: Date.now()
-    }));
+      // Mark migration complete
+      safeSetItem(KEY_MIGRATION_STATUS, JSON.stringify({
+        status: 'completed',
+        startedAt,
+        completedAt: Date.now()
+      }));
+    } catch (quotaErr) {
+      // Quota exceeded writing meta/status - mark failed
+      try {
+        localStorage.setItem(KEY_MIGRATION_STATUS, JSON.stringify({
+          status: 'failed',
+          startedAt,
+          failedAt: Date.now(),
+          reason: 'QuotaExceededError during finalization'
+        }));
+      } catch { /* Cannot write status */ }
+      errors.push('Migration aborted: localStorage quota exceeded while writing meta/status');
+      return { success: false, projectCount, workspaceCount, errors };
+    }
 
     // localStorage size validation - warn if exceeding 4MB
     let totalSize = 0;
@@ -371,6 +422,15 @@ export function saveWorkspace(projectId, workspaceId, data) {
 }
 
 /**
+ * Remove a workspace key from localStorage.
+ * @param {string} projectId
+ * @param {string} workspaceId
+ */
+export function removeWorkspaceLocal(projectId, workspaceId) {
+  localStorage.removeItem(KEY_WORKSPACE_PREFIX + projectId + '-' + workspaceId);
+}
+
+/**
  * Load tasks and taskGroups for a project.
  * @param {string} projectId
  * @returns {object|null} - { tasks, taskGroups }
@@ -428,42 +488,52 @@ export function loadAllProjectIds() {
 // @cost Autosave metadata: 1 write
 // =============================================================================
 
-// Write-race guard for Firestore writes (same pattern as firebaseService.js)
-let isFirestoreSaving = false;
-let queuedFirestoreSave = null;
+// Write-race guard for Firestore writes - per-path queuing to avoid dropping
+// concurrent saves to different documents. Each document path gets its own
+// in-flight/queued slot, so a workspace save cannot discard a metadata save.
+const firestoreWriteQueues = new Map(); // Map<string, { inFlight: boolean, queued: Function|null }>
 
-async function guardedFirestoreSave(saveFn) {
-  if (isFirestoreSaving) {
-    queuedFirestoreSave = saveFn;
+async function guardedFirestoreSave(path, saveFn) {
+  if (!firestoreWriteQueues.has(path)) {
+    firestoreWriteQueues.set(path, { inFlight: false, queued: null });
+  }
+  const slot = firestoreWriteQueues.get(path);
+
+  if (slot.inFlight) {
+    slot.queued = saveFn;
     return true;
   }
 
-  isFirestoreSaving = true;
+  slot.inFlight = true;
   try {
     const result = await saveFn();
     return result;
   } finally {
-    isFirestoreSaving = false;
-    if (queuedFirestoreSave) {
-      const nextSave = queuedFirestoreSave;
-      queuedFirestoreSave = null;
-      guardedFirestoreSave(nextSave).catch(() => {});
+    slot.inFlight = false;
+    if (slot.queued) {
+      const nextSave = slot.queued;
+      slot.queued = null;
+      guardedFirestoreSave(path, nextSave).catch(() => {});
     }
   }
 }
 
 /**
  * Save project metadata to Firestore.
+ * Excludes the `password` field from the Firestore payload to avoid storing
+ * credential hashes in a document accessible to any authenticated user.
  * @param {string} projectId
  * @param {object} metadata - project metadata
  * @returns {Promise<boolean>}
  */
 export async function saveProjectToFirestore(projectId, metadata) {
   if (!isFirebaseConfigured() || !db) return false;
-  return guardedFirestoreSave(async () => {
+  return guardedFirestoreSave(`projects/${projectId}`, async () => {
     try {
+      // Strip password from the Firestore payload - credentials stay local only
+      const { password, ...safeMetadata } = metadata;
       const docRef = doc(db, 'projects', projectId);
-      await setDoc(docRef, metadata, { merge: true });
+      await setDoc(docRef, safeMetadata, { merge: true });
       return true;
     } catch (error) {
       console.warn('[PersistenceService] Error saving project to Firestore:', error.message);
@@ -498,7 +568,7 @@ export async function loadProjectFromFirestore(projectId) {
  */
 export async function saveWorkspaceToFirestore(projectId, workspaceId, data) {
   if (!isFirebaseConfigured() || !db) return false;
-  return guardedFirestoreSave(async () => {
+  return guardedFirestoreSave(`projects/${projectId}/workspaces/${workspaceId}`, async () => {
     try {
       const docRef = doc(db, 'projects', projectId, 'workspaces', workspaceId);
       await setDoc(docRef, data, { merge: true });
@@ -508,6 +578,24 @@ export async function saveWorkspaceToFirestore(projectId, workspaceId, data) {
       return false;
     }
   });
+}
+
+/**
+ * Delete a workspace document from Firestore subcollection.
+ * @param {string} projectId
+ * @param {string} workspaceId
+ * @returns {Promise<boolean>}
+ */
+export async function deleteWorkspaceFromFirestore(projectId, workspaceId) {
+  if (!isFirebaseConfigured() || !db) return false;
+  try {
+    const docRef = doc(db, 'projects', projectId, 'workspaces', workspaceId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (error) {
+    console.warn('[PersistenceService] Error deleting workspace from Firestore:', error.message);
+    return false;
+  }
 }
 
 /**
@@ -558,7 +646,7 @@ export async function loadAllWorkspacesFromFirestore(projectId) {
  */
 export async function saveTasksToFirestore(projectId, data) {
   if (!isFirebaseConfigured() || !db) return false;
-  return guardedFirestoreSave(async () => {
+  return guardedFirestoreSave(`projects/${projectId}/tasks/taskData`, async () => {
     try {
       const docRef = doc(db, 'projects', projectId, 'tasks', 'taskData');
       await setDoc(docRef, data, { merge: true });
@@ -596,7 +684,7 @@ export async function loadTasksFromFirestore(projectId) {
  */
 export async function saveUserMeta(meta) {
   if (!isFirebaseConfigured() || !db) return false;
-  return guardedFirestoreSave(async () => {
+  return guardedFirestoreSave('userMeta/main', async () => {
     try {
       const docRef = doc(db, 'userMeta', 'main');
       await setDoc(docRef, meta, { merge: true });
@@ -939,7 +1027,7 @@ export async function loadLegacyDefaultProject() {
  */
 export async function saveLegacyProjects(projects) {
   if (!isFirebaseConfigured() || !db) return false;
-  return guardedFirestoreSave(async () => {
+  return guardedFirestoreSave(`${LEGACY_FIRESTORE_COLLECTION}/${LEGACY_FIRESTORE_DOC_ID}`, async () => {
     try {
       const docRef = doc(db, LEGACY_FIRESTORE_COLLECTION, LEGACY_FIRESTORE_DOC_ID);
       await setDoc(docRef, { projects: JSON.stringify(projects) }, { merge: true });
