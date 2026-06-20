@@ -17,7 +17,6 @@ import FullTaskManager from './FullTaskManager';
 import { GROUP_COLORS } from './taskConstants';
 import MarkdownRenderer from './MarkdownRenderer';
 import CardEditorPanel from './CardEditorPanel';
-import { saveProjects, loadProjects, saveActiveProject, loadActiveProject, saveDefaultProject, loadDefaultProject } from './firebaseService';
 import { isFirebaseConfigured } from './firebase';
 import { validateWorkspaces } from './workspaceValidator';
 import {
@@ -43,7 +42,11 @@ import {
   loadAllWorkspacesFromFirestore,
   loadTasksFromFirestore,
   saveUserMeta,
-  loadUserMeta
+  loadUserMeta,
+  loadLegacyProjects,
+  loadLegacyActiveProject,
+  loadLegacyDefaultProject,
+  saveLegacyProjects
 } from './persistenceService';
 
 // --- Premium Color Themes (10 colors) ---
@@ -696,9 +699,9 @@ export default function WorkflowApp() {
         if (isFirebaseConfigured()) {
           setSyncStatus('syncing');
           try {
-            firestoreProjects = await loadProjects();
-            firestoreActiveId = await loadActiveProject();
-            firestoreDefaultId = await loadDefaultProject();
+            firestoreProjects = await loadLegacyProjects();
+            firestoreActiveId = await loadLegacyActiveProject();
+            firestoreDefaultId = await loadLegacyDefaultProject();
             if (firestoreProjects) {
               // --- Timestamp comparison: preserve newer local edits ---
               const localRaw = localStorage.getItem('nexus-app-state');
@@ -716,7 +719,7 @@ export default function WorkflowApp() {
                       firestoreProjects = null;
                       firestoreActiveId = null;
                       firestoreDefaultId = null;
-                      saveProjects(localProjects).catch(() => {});
+                      saveLegacyProjects(localProjects).catch(() => {});
                     }
                   }
                 } catch (parseErr) {

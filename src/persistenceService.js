@@ -7,6 +7,36 @@
 // - Firestore subcollection-based read/write functions
 // - Debounced save helpers for App.jsx integration
 // =============================================================================
+//
+// MIGRATION LIFECYCLE
+// -------------------
+// The migration from the monolithic nexus-app-state blob to per-workspace keys
+// follows this lifecycle:
+//
+// 1. DETECTION: On app init, detectMigrationNeeded() checks for the presence of
+//    the legacy nexus-app-state key and the absence of cm-migration-status with
+//    status "completed". If migration is needed, it returns { needed: true }.
+//
+// 2. EXECUTION: migrateFromBlobToPerWorkspace() reads the old blob, splits it
+//    into per-workspace localStorage keys (cm-meta, cm-proj-*, cm-ws-*, cm-tasks-*),
+//    and writes them. The original nexus-app-state key is preserved (not deleted)
+//    to allow rollback.
+//
+// 3. VERIFICATION: After migration, the app loads via the new cm-* keys. If the
+//    load succeeds and the user continues normal operation, the migration is
+//    considered verified.
+//
+// 4. COMPLETION: The cm-migration-status key records { status: "completed",
+//    migratedAt: timestamp }. Once completed, the migration path is skipped on
+//    subsequent loads.
+//
+// ROLLBACK WINDOW: The nexus-app-state blob is retained for 7 days after
+// migration completes. During this window, rollbackMigration() can clear all
+// cm-* keys and reset cm-migration-status, allowing the app to fall back to
+// the original blob on the next load. After 7 days, the blob may be cleaned up
+// by a future maintenance pass.
+//
+// =============================================================================
 
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
@@ -819,4 +849,104 @@ export function createDebouncedSaver(delayMs) {
   };
 
   return debouncedSave;
+}
+
+// =============================================================================
+// LEGACY FIRESTORE API (deprecated - backward compat only)
+// =============================================================================
+// These functions read/write from the old single-document Firestore format
+// (collection: "appData", document: "main") used before the subcollection
+// migration. They exist solely to support the initialization fallback path
+// that loads existing user data stored in the old schema. New code should use
+// the subcollection API above (saveProjectToFirestore, loadProjectFromFirestore,
+// saveWorkspaceToFirestore, etc.).
+//
+// These will be removed once all users have migrated to the subcollection format.
+// =============================================================================
+
+const LEGACY_FIRESTORE_COLLECTION = 'appData';
+const LEGACY_FIRESTORE_DOC_ID = 'main';
+
+/**
+ * @deprecated Use loadProjectFromFirestore / loadAllWorkspacesFromFirestore instead.
+ * Load the full projects array from the legacy single-document Firestore format.
+ * @returns {Promise<Array|null>}
+ */
+export async function loadLegacyProjects() {
+  if (!isFirebaseConfigured() || !db) return null;
+  try {
+    const docRef = doc(db, LEGACY_FIRESTORE_COLLECTION, LEGACY_FIRESTORE_DOC_ID);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.projects) {
+        return JSON.parse(data.projects);
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn('[PersistenceService] Error loading legacy projects:', error.message);
+    return null;
+  }
+}
+
+/**
+ * @deprecated Use loadUserMeta instead.
+ * Load the active project ID from the legacy single-document Firestore format.
+ * @returns {Promise<string|null>}
+ */
+export async function loadLegacyActiveProject() {
+  if (!isFirebaseConfigured() || !db) return null;
+  try {
+    const docRef = doc(db, LEGACY_FIRESTORE_COLLECTION, LEGACY_FIRESTORE_DOC_ID);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data().activeProjectId || null;
+    }
+    return null;
+  } catch (error) {
+    console.warn('[PersistenceService] Error loading legacy active project:', error.message);
+    return null;
+  }
+}
+
+/**
+ * @deprecated Use loadUserMeta instead.
+ * Load the default project ID from the legacy single-document Firestore format.
+ * @returns {Promise<string|null>}
+ */
+export async function loadLegacyDefaultProject() {
+  if (!isFirebaseConfigured() || !db) return null;
+  try {
+    const docRef = doc(db, LEGACY_FIRESTORE_COLLECTION, LEGACY_FIRESTORE_DOC_ID);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data().defaultProjectId || null;
+    }
+    return null;
+  } catch (error) {
+    console.warn('[PersistenceService] Error loading legacy default project:', error.message);
+    return null;
+  }
+}
+
+/**
+ * @deprecated Use saveProjectToFirestore / saveWorkspaceToFirestore instead.
+ * Save the full projects array to the legacy single-document Firestore format.
+ * Used only during initialization when local data is newer and needs to sync up.
+ * @param {Array} projects
+ * @returns {Promise<boolean>}
+ */
+export async function saveLegacyProjects(projects) {
+  if (!isFirebaseConfigured() || !db) return false;
+  return guardedFirestoreSave(async () => {
+    try {
+      const docRef = doc(db, LEGACY_FIRESTORE_COLLECTION, LEGACY_FIRESTORE_DOC_ID);
+      await setDoc(docRef, { projects: JSON.stringify(projects) }, { merge: true });
+      return true;
+    } catch (error) {
+      console.warn('[PersistenceService] Error saving legacy projects:', error.message);
+      return false;
+    }
+  });
 }
